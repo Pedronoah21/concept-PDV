@@ -1,0 +1,605 @@
+// Concept PDV — modelo de dados
+// Regras: valores em centavos (Int); estoque só muda via StockMovement; nada fiscal é apagado.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  GERENTE
+  CAIXA
+  VENDEDOR
+}
+
+enum FiscalEnv {
+  HOMOLOGACAO
+  PRODUCAO
+}
+
+model Company {
+  id              String    @id @default(cuid())
+  slug            String    @unique // endereço da loja online: /loja/<slug>
+  cnpj            String    @unique
+  legalName       String
+  tradeName       String
+  ie              String?
+  /// Código de regime tributário: 1 Simples Nacional, 2 Simples excesso, 3 Regime normal
+  crt             Int       @default(1)
+  phone           String?
+  email           String?
+  zip             String?
+  street          String?
+  number          String?
+  district        String?
+  city            String?
+  cityCode        String? // código IBGE
+  uf              String?
+  fiscalProvider  String    @default("mock") // mock | focusnfe
+  fiscalToken     String?
+  fiscalEnv       FiscalEnv @default(HOMOLOGACAO)
+  receiptFooter   String?
+  onlineStoreOn   Boolean   @default(true)
+  allowNegativeStock Boolean @default(true)
+  createdAt       DateTime  @default(now())
+
+  stores     Store[]
+  users      User[]
+  products   Product[]
+  categories Category[]
+  suppliers  Supplier[]
+  customers  Customer[]
+  sales      Sale[]
+  orders     Order[]
+  counters   Counter[]
+}
+
+/// Numeração sequencial por empresa (vendas, pedidos, códigos internos).
+model Counter {
+  companyId String
+  key       String
+  value     Int     @default(0)
+  company   Company @relation(fields: [companyId], references: [id])
+
+  @@id([companyId, key])
+}
+
+model Store {
+  id        String     @id @default(cuid())
+  companyId String
+  name      String
+  isOnline  Boolean    @default(false) // loja que atende os pedidos da loja online
+  active    Boolean    @default(true)
+  company   Company    @relation(fields: [companyId], references: [id])
+  registers Register[]
+  balances  StockBalance[]
+
+  @@index([companyId])
+}
+
+/// Um caixa (terminal) de uma loja.
+model Register {
+  id       String        @id @default(cuid())
+  storeId  String
+  code     String // ex.: "CX01" — usado no número provisório das vendas offline
+  name     String
+  active   Boolean       @default(true)
+  store    Store         @relation(fields: [storeId], references: [id])
+  sessions CashSession[]
+
+  @@unique([storeId, code])
+}
+
+model User {
+  id               String    @id @default(cuid())
+  companyId        String
+  name             String
+  email            String
+  passwordHash     String
+  role             Role      @default(CAIXA)
+  /// Desconto máximo (%) sem autorização de gerente
+  maxDiscountPct   Int       @default(5)
+  active           Boolean   @default(true)
+  failedLogins     Int       @default(0)
+  lockedUntil      DateTime?
+  createdAt        DateTime  @default(now())
+  company          Company   @relation(fields: [companyId], references: [id])
+  sessions         Session[]
+
+  @@unique([companyId, email])
+}
+
+model Session {
+  id        String   @id // hash SHA-256 do token do cookie
+  userId    String
+  expiresAt DateTime
+  userAgent String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  companyId String
+  name      String
+  company   Company   @relation(fields: [companyId], references: [id])
+  products  Product[]
+
+  @@unique([companyId, name])
+}
+
+model Supplier {
+  id        String     @id @default(cuid())
+  companyId String
+  name      String
+  document  String?
+  phone     String?
+  email     String?
+  notes     String?
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  company   Company    @relation(fields: [companyId], references: [id])
+  purchases Purchase[]
+
+  @@unique([companyId, document])
+}
+
+model Product {
+  id          String    @id @default(cuid())
+  companyId   String
+  name        String
+  description String?
+  brand       String?
+  categoryId  String?
+  unit        String    @default("UN")
+  imageUrl    String?
+  onlineVisible Boolean @default(true)
+  active      Boolean   @default(true)
+
+  // Dados fiscais (obrigatórios para NFC-e/NF-e)
+  ncm         String    @default("00000000")
+  cest        String?
+  origin      Int       @default(0) // 0 nacional, 1 estrangeira importação direta, 2 estrangeira mercado interno...
+  cfop        String    @default("5102")
+  csosn       String?   @default("102") // Simples Nacional
+  cstIcms     String?   // Regime normal
+  icmsRate    Int       @default(0) // em centésimos de %: 1800 = 18,00%
+  cstPis      String    @default("49")
+  cstCofins   String    @default("49")
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  company     Company   @relation(fields: [companyId], references: [id])
+  category    Category? @relation(fields: [categoryId], references: [id])
+  variants    Variant[]
+
+  @@index([companyId, name])
+}
+
+/// Variação vendável (cor/tamanho). Produto sem grade tem uma variação única.
+model Variant {
+  id            String   @id @default(cuid())
+  productId     String
+  sku           String
+  barcode       String?
+  color         String?
+  size          String?
+  priceCents    Int
+  /// Preço promocional (substitui o preço enquanto estiver definido)
+  promoPriceCents Int?
+  /// Custo médio ponderado, atualizado a cada entrada de compra
+  avgCostCents  Int      @default(0)
+  minStock      Int      @default(0)
+  active        Boolean  @default(true)
+  product       Product  @relation(fields: [productId], references: [id])
+  balances      StockBalance[]
+  movements     StockMovement[]
+  saleItems     SaleItem[]
+
+  @@unique([productId, sku])
+  @@index([barcode])
+}
+
+model StockBalance {
+  variantId String
+  storeId   String
+  quantity  Int     @default(0)
+  /// Reservado por pedidos online ainda não faturados
+  reserved  Int     @default(0)
+  variant   Variant @relation(fields: [variantId], references: [id])
+  store     Store   @relation(fields: [storeId], references: [id])
+
+  @@id([variantId, storeId])
+}
+
+enum MovementType {
+  COMPRA
+  VENDA
+  DEVOLUCAO
+  CANCELAMENTO
+  AJUSTE
+  PERDA
+  INVENTARIO
+  TRANSFERENCIA
+}
+
+/// Livro de estoque: imutável. O saldo é consequência dos movimentos.
+model StockMovement {
+  id            String       @id @default(cuid())
+  companyId     String
+  storeId       String
+  variantId     String
+  type          MovementType
+  quantity      Int // positivo entra, negativo sai
+  balanceAfter  Int
+  unitCostCents Int?
+  refType       String?
+  refId         String?
+  reason        String?
+  userId        String?
+  createdAt     DateTime     @default(now())
+  variant       Variant      @relation(fields: [variantId], references: [id])
+
+  @@index([variantId, createdAt])
+  @@index([companyId, createdAt])
+}
+
+model Purchase {
+  id            String         @id @default(cuid())
+  companyId     String
+  storeId       String
+  supplierId    String?
+  invoiceNumber String?
+  accessKey     String?        // chave da NF-e do fornecedor (quando importada do XML)
+  issuedAt      DateTime?
+  productsCents Int            @default(0)
+  freightCents  Int            @default(0)
+  otherCents    Int            @default(0)
+  discountCents Int            @default(0)
+  totalCents    Int            @default(0)
+  notes         String?
+  userId        String?
+  createdAt     DateTime       @default(now())
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  items         PurchaseItem[]
+  payables      Payable[]
+
+  @@unique([companyId, accessKey])
+}
+
+model PurchaseItem {
+  id               String   @id @default(cuid())
+  purchaseId       String
+  variantId        String
+  quantity         Int
+  unitCostCents    Int
+  /// Custo com frete/despesas/desconto rateados
+  landedCostCents  Int
+  purchase         Purchase @relation(fields: [purchaseId], references: [id])
+}
+
+model Payable {
+  id          String    @id @default(cuid())
+  companyId   String
+  purchaseId  String?
+  description String
+  amountCents Int
+  dueDate     DateTime
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+  purchase    Purchase? @relation(fields: [purchaseId], references: [id])
+
+  @@index([companyId, dueDate])
+}
+
+model Customer {
+  id               String        @id @default(cuid())
+  companyId        String
+  name             String
+  document         String?       // CPF ou CNPJ, só dígitos
+  email            String?
+  phone            String?
+  birthDate        DateTime?
+  zip              String?
+  street           String?
+  number           String?
+  complement       String?
+  district         String?
+  city             String?
+  cityCode         String?
+  uf               String?
+  creditLimitCents Int           @default(0)
+  notes            String?
+  active           Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  company          Company       @relation(fields: [companyId], references: [id])
+  sales            Sale[]
+  installments     Installment[]
+
+  @@unique([companyId, document])
+  @@index([companyId, name])
+}
+
+enum CashStatus {
+  ABERTO
+  FECHADO
+}
+
+model CashSession {
+  id             String         @id @default(cuid())
+  registerId     String
+  userId         String
+  openingCents   Int
+  openedAt       DateTime       @default(now())
+  closedAt       DateTime?
+  closedById     String?
+  /// Valores contados por forma de pagamento no fechamento
+  countedJson    Json?
+  expectedJson   Json?
+  differenceCents Int?
+  notes          String?
+  status         CashStatus     @default(ABERTO)
+  register       Register       @relation(fields: [registerId], references: [id])
+  movements      CashMovement[]
+  sales          Sale[]
+
+  @@index([registerId, status])
+}
+
+enum CashMovementType {
+  SANGRIA
+  SUPRIMENTO
+  RECEBIMENTO_CREDIARIO
+  DEVOLUCAO
+}
+
+model CashMovement {
+  id          String           @id @default(cuid())
+  sessionId   String
+  type        CashMovementType
+  method      String           @default("DINHEIRO")
+  amountCents Int
+  reason      String?
+  userId      String?
+  createdAt   DateTime         @default(now())
+  session     CashSession      @relation(fields: [sessionId], references: [id])
+}
+
+enum SaleStatus {
+  CONCLUIDA
+  CANCELADA
+}
+
+enum SaleChannel {
+  PDV
+  ONLINE
+}
+
+model Sale {
+  /// UUID gerado no caixa (idempotência do envio offline)
+  id              String        @id
+  companyId       String
+  storeId         String
+  registerId      String?
+  cashSessionId   String?
+  number          Int
+  channel         SaleChannel   @default(PDV)
+  customerId      String?
+  userId          String
+  cpfNaNota       String?
+  grossCents      Int
+  discountCents   Int
+  totalCents      Int
+  costCents       Int
+  changeCents     Int           @default(0)
+  /// Frete cobrado (pedidos online). Não entra em totalCents; entra na nota e no pagamento.
+  shippingCents   Int           @default(0)
+  status          SaleStatus    @default(CONCLUIDA)
+  offline         Boolean       @default(false)
+  /// Desconto acima do limite do operador sem autorização (venda offline): requer revisão do gerente
+  needsReview     Boolean       @default(false)
+  approvedById    String?
+  cancelReason    String?
+  canceledAt      DateTime?
+  canceledById    String?
+  notes           String?
+  createdAt       DateTime // horário real da venda no caixa
+  syncedAt        DateTime      @default(now())
+  company         Company       @relation(fields: [companyId], references: [id])
+  cashSession     CashSession?  @relation(fields: [cashSessionId], references: [id])
+  customer        Customer?     @relation(fields: [customerId], references: [id])
+  items           SaleItem[]
+  payments        SalePayment[]
+  fiscalDocuments FiscalDocument[]
+  returns         Return[]
+  installments    Installment[]
+
+  @@unique([companyId, number])
+  @@index([companyId, createdAt])
+}
+
+model SaleItem {
+  id             String  @id @default(cuid())
+  saleId         String
+  variantId      String
+  description    String
+  quantity       Int
+  unitPriceCents Int
+  /// Desconto total da linha (item + rateio do desconto da venda)
+  discountCents  Int
+  totalCents     Int
+  unitCostCents  Int
+  returnedQty    Int     @default(0)
+  sale           Sale    @relation(fields: [saleId], references: [id])
+  variant        Variant @relation(fields: [variantId], references: [id])
+
+  @@index([variantId])
+}
+
+model SalePayment {
+  id           String @id @default(cuid())
+  saleId       String
+  method       String
+  amountCents  Int
+  installments Int    @default(1)
+  voucherCode  String?
+  sale         Sale   @relation(fields: [saleId], references: [id])
+}
+
+enum InstallmentStatus {
+  ABERTA
+  PAGA
+  CANCELADA
+}
+
+/// Parcela de crediário
+model Installment {
+  id          String            @id @default(cuid())
+  saleId      String
+  customerId  String
+  number      Int
+  of          Int
+  amountCents Int
+  paidCents   Int               @default(0)
+  dueDate     DateTime
+  paidAt      DateTime?
+  status      InstallmentStatus @default(ABERTA)
+  sale        Sale              @relation(fields: [saleId], references: [id])
+  customer    Customer          @relation(fields: [customerId], references: [id])
+
+  @@index([customerId, status])
+}
+
+model Voucher {
+  id           String   @id @default(cuid())
+  companyId    String
+  code         String
+  customerId   String?
+  amountCents  Int
+  balanceCents Int
+  returnId     String?
+  createdAt    DateTime @default(now())
+
+  @@unique([companyId, code])
+}
+
+model Return {
+  id            String       @id @default(cuid())
+  saleId        String
+  totalCents    Int
+  refundMethod  String // DINHEIRO | VALE_TROCA
+  voucherCode   String?
+  reason        String?
+  userId        String
+  createdAt     DateTime     @default(now())
+  sale          Sale         @relation(fields: [saleId], references: [id])
+  items         ReturnItem[]
+}
+
+model ReturnItem {
+  id          String  @id @default(cuid())
+  returnId    String
+  saleItemId  String
+  quantity    Int
+  totalCents  Int
+  backToStock Boolean @default(true)
+  ret         Return  @relation(fields: [returnId], references: [id])
+}
+
+enum OrderStatus {
+  PENDENTE    // aguardando pagamento — estoque reservado
+  PAGO
+  SEPARACAO
+  ENVIADO
+  ENTREGUE
+  CANCELADO
+}
+
+/// Pedido da loja online. Ao ser faturado vira uma venda (canal ONLINE).
+model Order {
+  id             String      @id @default(cuid())
+  companyId      String
+  storeId        String
+  number         Int
+  status         OrderStatus @default(PENDENTE)
+  customerName   String
+  customerEmail  String
+  customerPhone  String
+  customerDoc    String?
+  addressJson    Json
+  itemsJson      Json // [{variantId, description, quantity, unitPriceCents}]
+  subtotalCents  Int
+  shippingCents  Int         @default(0)
+  totalCents     Int
+  paymentMethod  String
+  delivery       String      @default("RETIRADA") // RETIRADA | ENTREGA
+  notes          String?
+  saleId         String?     @unique
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  company        Company     @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, number])
+}
+
+enum FiscalModel {
+  NFCE
+  NFE
+}
+
+enum FiscalStatus {
+  PENDENTE
+  PROCESSANDO
+  AUTORIZADA
+  REJEITADA
+  CANCELADA
+  ERRO
+}
+
+model FiscalDocument {
+  id           String       @id @default(cuid())
+  companyId    String
+  saleId       String
+  model        FiscalModel
+  /// Referência única enviada ao emissor (idempotência na API fiscal)
+  ref          String       @unique
+  status       FiscalStatus @default(PENDENTE)
+  number       Int?
+  serie        Int?
+  accessKey    String?
+  protocol     String?
+  xmlUrl       String?
+  danfeUrl     String?
+  qrcodeUrl    String?
+  consultUrl   String?
+  message      String?
+  attempts     Int          @default(0)
+  nextAttemptAt DateTime    @default(now())
+  payload      Json?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  sale         Sale         @relation(fields: [saleId], references: [id])
+
+  @@index([status, nextAttemptAt])
+  @@index([companyId, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  data      Json?
+  createdAt DateTime @default(now())
+
+  @@index([companyId, createdAt])
+}

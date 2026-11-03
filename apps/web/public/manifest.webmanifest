@@ -1,0 +1,11 @@
+{
+  "name": "Concept PDV",
+  "short_name": "Concept PDV",
+  "description": "Ponto de venda com estoque, caixa, loja online e nota fiscal",
+  "start_url": "/pdv",
+  "display": "standalone",
+  "background_color": "#eef1f0",
+  "theme_color": "#1f3b4d",
+  "lang": "pt-BR",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

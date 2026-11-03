@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+*.log
+coverage/
+apps/web/dev-dist/

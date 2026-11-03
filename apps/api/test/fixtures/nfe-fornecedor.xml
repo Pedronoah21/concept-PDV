@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <NFe>
+    <infNFe Id="NFe13261111222333000181550010000012341000012345" versao="4.00">
+      <ide><nNF>1234</nNF><dhEmi>2026-10-30T10:00:00-04:00</dhEmi></ide>
+      <emit><CNPJ>11222333000181</CNPJ><xNome>CONFECCOES EXEMPLO LTDA</xNome><xFant>Exemplo Malhas</xFant></emit>
+      <det nItem="1"><prod><cProd>CAM-01</cProd><cEAN>7891000315507</cEAN><xProd>CAMISETA MALHA PRETA M</xProd><NCM>61091000</NCM><CFOP>6101</CFOP><uCom>UN</uCom><qCom>10.0000</qCom><vUnCom>25.0000000000</vUnCom><vProd>250.00</vProd></prod></det>
+      <det nItem="2"><prod><cProd>BON-02</cProd><cEAN>SEM GTIN</cEAN><xProd>BONE ABA CURVA</xProd><NCM>65050090</NCM><CFOP>6101</CFOP><uCom>UN</uCom><qCom>5.0000</qCom><vUnCom>18.5000000000</vUnCom><vProd>92.50</vProd></prod></det>
+      <total><ICMSTot><vProd>342.50</vProd><vFrete>20.00</vFrete><vDesc>2.50</vDesc><vOutro>0.00</vOutro><vIPI>0.00</vIPI><vST>0.00</vST><vNF>360.00</vNF></ICMSTot></total>
+    </infNFe>
+  </NFe>
+  <protNFe><infProt><chNFe>13261111222333000181550010000012341000012345</chNFe></infProt></protNFe>
+</nfeProc>

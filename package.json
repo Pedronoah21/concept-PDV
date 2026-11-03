@@ -1,0 +1,17 @@
+{
+  "name": "concept-pdv",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Concept PDV — ponto de venda online/offline com estoque, caixa, loja online e NFC-e/NF-e",
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter ./apps/* dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "db:migrate": "pnpm --filter @concept/api db:migrate",
+    "db:seed": "pnpm --filter @concept/api db:seed"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
