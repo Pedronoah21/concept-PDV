@@ -13,7 +13,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
-    "db:setup": "prisma db push && tsx prisma/seed.ts"
+    "db:setup": "prisma db push && tsx prisma/seed.ts",
+    "db:bootstrap": "tsx prisma/bootstrap.ts",
+    "deploy:prepare": "prisma db push --skip-generate && tsx prisma/bootstrap.ts"
   },
   "dependencies": {
     "@concept/shared": "workspace:*",
