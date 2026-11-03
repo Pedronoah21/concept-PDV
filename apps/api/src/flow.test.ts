@@ -271,6 +271,23 @@ describe('fluxo completo do Concept PDV', () => {
     assert.equal((await call('admin', 'GET', '/reports/stale')).status, 200);
   });
 
+  it('define estoque mínimo por item e por categoria; só gerência', async () => {
+    assert.equal((await call('caixa', 'POST', '/stock/min', { minStock: 9, variantIds: [ids.vM] })).status, 403);
+    const one = await call('admin', 'POST', '/stock/min', { minStock: 7, variantIds: [ids.vM] });
+    assert.equal(one.body.updated, 1);
+    assert.equal((await prisma.variant.findUniqueOrThrow({ where: { id: ids.vM } })).minStock, 7);
+    assert.equal((await prisma.variant.findUniqueOrThrow({ where: { id: ids.vG } })).minStock, 0, 'não mexe nos outros');
+
+    const cat = await call('admin', 'POST', '/categories', { name: 'Camisetas' });
+    await prisma.product.updateMany({ where: { variants: { some: { id: ids.vM } } }, data: { categoryId: cat.body.id } });
+    const all = await call('admin', 'POST', '/stock/min', { minStock: 4, categoryId: cat.body.id });
+    assert.equal(all.body.updated, 2);
+    const list = await call('admin', 'GET', `/stock?storeId=${ids.store}&categoryId=${cat.body.id}`);
+    assert.equal(list.body.length, 2);
+    assert.ok(list.body.every((r: any) => r.minStock === 4 && r.category === 'Camisetas'));
+    assert.equal((await call('admin', 'POST', '/stock/min', { minStock: 1 })).status, 400, 'exige itens ou categoria');
+  });
+
   it('estoque nunca diverge do livro de movimentos', async () => {
     for (const v of [ids.vM, ids.vG]) {
       const sum = await prisma.stockMovement.aggregate({ where: { variantId: v, storeId: ids.store }, _sum: { quantity: true } });

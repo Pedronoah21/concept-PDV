@@ -53,6 +53,12 @@ const adjustInput = z.object({
   reason: z.string().min(3),
 });
 
+const minStockInput = z.object({
+  minStock: z.number().int().min(0).max(100_000),
+  variantIds: z.array(z.string()).max(2000).optional(),
+  categoryId: z.string().optional(),
+});
+
 const transferInput = z.object({
   variantId: z.string(),
   fromStoreId: z.string(),
@@ -218,13 +224,18 @@ export default async function catalogRoutes(app: FastifyInstance) {
 
   // ---------------- Estoque ----------------
   app.get('/stock', async (req) => {
-    const q = req.query as { storeId?: string; low?: string; q?: string };
+    const q = req.query as { storeId?: string; low?: string; q?: string; categoryId?: string };
     const variants = await prisma.variant.findMany({
       where: {
         active: true,
-        product: { companyId: req.user.companyId, active: true, ...(q.q ? { name: { contains: q.q, mode: 'insensitive' } } : {}) },
+        product: {
+          companyId: req.user.companyId,
+          active: true,
+          ...(q.q ? { name: { contains: q.q, mode: 'insensitive' } } : {}),
+          ...(q.categoryId ? { categoryId: q.categoryId } : {}),
+        },
       },
-      include: { product: { select: { name: true, brand: true } }, balances: q.storeId ? { where: { storeId: q.storeId } } : true },
+      include: { product: { select: { name: true, brand: true, categoryId: true, category: { select: { name: true } } } }, balances: q.storeId ? { where: { storeId: q.storeId } } : true },
       orderBy: { product: { name: 'asc' } },
       take: 1000,
     });
@@ -236,6 +247,8 @@ export default async function catalogRoutes(app: FastifyInstance) {
         variantId: v.id,
         name: v.product.name,
         brand: v.product.brand,
+        categoryId: v.product.categoryId,
+        category: v.product.category?.name ?? null,
         color: v.color,
         size: v.size,
         sku: v.sku,
@@ -259,6 +272,23 @@ export default async function catalogRoutes(app: FastifyInstance) {
       orderBy: { createdAt: 'desc' },
       take: Math.min(Number(q.limit) || 200, 1000),
     });
+  });
+
+  /**
+   * Define o estoque mínimo de uma ou várias variações de uma vez:
+   * pelos IDs escolhidos na tela ou por categoria inteira.
+   */
+  app.post('/stock/min', { preHandler: guard('estoque:ajustar') }, async (req) => {
+    const body = parse(minStockInput, req.body);
+    if (!body.variantIds?.length && !body.categoryId) throw badRequest('Escolha os itens ou uma categoria');
+    const where = {
+      active: true,
+      product: { companyId: req.user.companyId, ...(body.categoryId ? { categoryId: body.categoryId } : {}) },
+      ...(body.variantIds?.length ? { id: { in: body.variantIds } } : {}),
+    };
+    const { count } = await prisma.variant.updateMany({ where, data: { minStock: body.minStock } });
+    await audit(prisma, req.user.companyId, req.user.id, 'estoque.minimo', 'Variant', body.categoryId ?? undefined, { ...body, count });
+    return { updated: count };
   });
 
   app.post('/stock/adjust', { preHandler: guard('estoque:ajustar') }, async (req) => {
