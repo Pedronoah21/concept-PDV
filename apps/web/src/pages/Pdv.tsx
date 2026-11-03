@@ -438,7 +438,7 @@ function Search({ catalog, onPick, inputRef }: { catalog: Catalog; onPick: (v: C
     if (t.length < 2 || /^\d{8,14}$/.test(t)) return [];
     const words = t.split(/\s+/);
     return catalog.variants.filter((v) => {
-      const hay = fold(`${v.name} ${v.brand ?? ''} ${v.color ?? ''} ${v.size ?? ''} ${v.sku}`);
+      const hay = fold(`${v.productCode ?? ''} ${v.name} ${v.brand ?? ''} ${v.color ?? ''} ${v.size ?? ''} ${v.sku}`);
       return words.every((w) => hay.includes(w));
     }).slice(0, 30);
   }, [parsed.term, catalog.variants]);
@@ -472,6 +472,9 @@ function Search({ catalog, onPick, inputRef }: { catalog: Catalog; onPick: (v: C
             const term = parsed.term;
             const exact = catalog.variants.find((v) => v.barcode === term || v.sku.toLowerCase() === term.toLowerCase());
             if (exact) return pick(exact);
+            // Código do produto: com uma variação só, lança direto; com grade, a lista já mostra as opções.
+            const byCode = catalog.variants.filter((v) => v.productCode?.toLowerCase() === term.toLowerCase());
+            if (byCode.length === 1) return pick(byCode[0]);
             if (results[cursor]) return pick(results[cursor]);
             if (term) toast(`Nenhum produto com o código "${term}"`);
           }

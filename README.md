@@ -25,6 +25,7 @@ de cada um em [docs/ANALISE.md](docs/ANALISE.md).
 - Fechamento **cego** (o operador conta antes de ver o esperado) com diferença por forma de pagamento
 
 **Mercadoria**
+- Código do produto definido pela loja (ou gerado automaticamente), herdado pelas variações
 - Produto com grade cor × tamanho gerada de uma vez; código de barras interno (EAN-13) quando o produto não tem
 - Dados fiscais no cadastro: NCM, CEST, CFOP, origem, CSOSN/CST, alíquota, PIS/COFINS
 - Estoque como livro de movimentos: toda alteração tem origem, usuário, motivo e saldo resultante
@@ -122,6 +123,10 @@ apps/web        App (React): PDV, retaguarda, loja online, modo offline
 packages/shared Regras comuns ao caixa e ao servidor: dinheiro, carrinho, cupom, ESC/POS
 docs/           Análise das referências e próximos passos
 ```
+
+O banco evolui por migrações versionadas em `apps/api/prisma/migrations`: altere `schema.prisma`,
+rode `pnpm --filter @concept/api db:migrate:dev` e publique a migração gerada. Nunca edite uma
+migração já publicada; a cada deploy, `deploy:prepare` aplica as pendentes.
 
 Regras que valem para o código todo: dinheiro sempre em centavos inteiros; estoque só muda por
 `moveStock`; vendas são idempotentes pelo ID gerado no caixa; nada fiscal é apagado.

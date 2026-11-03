@@ -40,6 +40,7 @@ export default async function salesRoutes(app: FastifyInstance) {
       p.variants.map((v) => ({
         id: v.id,
         productId: p.id,
+        productCode: p.code,
         name: p.name,
         brand: p.brand,
         color: v.color,

@@ -154,6 +154,8 @@ model Supplier {
 model Product {
   id          String    @id @default(cuid())
   companyId   String
+  /// Código do produto definido pela loja (ou gerado: 00001, 00002…). Base do código das variações.
+  code        String?
   name        String
   description String?
   brand       String?
@@ -180,6 +182,7 @@ model Product {
   category    Category? @relation(fields: [categoryId], references: [id])
   variants    Variant[]
 
+  @@unique([companyId, code])
   @@index([companyId, name])
 }
 

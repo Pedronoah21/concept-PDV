@@ -67,7 +67,7 @@ async function main() {
   for (const item of catalog) {
     code++;
     const product = await prisma.product.create({
-      data: { companyId: company.id, name: item.name, brand: item.brand, categoryId: cats[item.cat], ncm: item.ncm, cfop: '5102', csosn: '102' },
+      data: { companyId: company.id, code: String(code).padStart(5, '0'), name: item.name, brand: item.brand, categoryId: cats[item.cat], ncm: item.ncm, cfop: '5102', csosn: '102' },
     });
     let k = 0;
     for (const color of item.colors) {

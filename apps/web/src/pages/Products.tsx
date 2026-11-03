@@ -22,7 +22,7 @@ export function ProductsPage() {
       {data && (
         <div className="panel flush table-wrap">
           <table className="table">
-            <thead><tr><th>Produto</th><th>Categoria</th><th>Variações</th><th className="r">Estoque</th><th className="r">Preço</th></tr></thead>
+            <thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Variações</th><th className="r">Estoque</th><th className="r">Preço</th></tr></thead>
             <tbody>
               {data.map((p) => {
                 const prices = p.variants.map((v: any) => v.priceCents);
@@ -30,6 +30,7 @@ export function ProductsPage() {
                 const max = Math.max(...prices);
                 return (
                   <tr key={p.id} className="click" onClick={() => navigate(`/produtos/${p.id}`)}>
+                    <td className="num">{p.code ?? '—'}</td>
                     <td><b>{p.name}</b> {p.brand && <span className="muted">{p.brand}</span>}</td>
                     <td>{p.category?.name ?? '—'}</td>
                     <td>{p.variants.length}</td>
@@ -38,7 +39,7 @@ export function ProductsPage() {
                   </tr>
                 );
               })}
-              {!data.length && <tr><td colSpan={5} className="empty">Nenhum produto encontrado. Cadastre o primeiro ou importe pelo XML de uma nota de compra.</td></tr>}
+              {!data.length && <tr><td colSpan={6} className="empty">Nenhum produto encontrado. Cadastre o primeiro ou importe pelo XML de uma nota de compra.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -62,6 +63,7 @@ interface VariantForm {
 }
 
 const emptyProduct = {
+  code: '',
   name: '',
   description: '',
   brand: '',
@@ -121,11 +123,12 @@ export function ProductFormPage({ id }: { id?: string }) {
       categoryId: p.categoryId || null,
       description: p.description || null,
       brand: p.brand || null,
+      code: p.code || null,
       imageUrl: p.imageUrl || null,
       cest: p.cest || null,
       cstIcms: p.cstIcms || null,
       storeId: store?.id,
-      variants: variants.map((v) => ({ ...v, barcode: v.barcode || null, color: v.color || null, size: v.size || null })),
+      variants: variants.map(({ sku: _sku, ...v }) => ({ ...v, barcode: v.barcode || null, color: v.color || null, size: v.size || null })),
     };
     const saved = await api<any>(id ? `/products/${id}` : '/products', { method: id ? 'PUT' : 'POST', body });
     toast('Produto salvo');
@@ -144,14 +147,17 @@ export function ProductFormPage({ id }: { id?: string }) {
       <div className="page-head">
         <div>
           <Link to="/produtos">Produtos</Link>
-          <h1>{id ? p.name || 'Produto' : 'Novo produto'}</h1>
+          <h1>{id ? `${p.code ? p.code + ' ' : ''}${p.name}` || 'Produto' : 'Novo produto'}</h1>
         </div>
         <button className="btn primary" disabled={saving}>Salvar produto</button>
       </div>
 
       <div className="panel stack">
         <h2>Dados do produto</h2>
-        <div className="grid cols-3">
+        <div className="grid cols-4">
+          <Field label="Código do produto" hint="Deixe em branco para gerar automaticamente.">
+            <Input value={p.code} maxLength={30} placeholder="Ex.: CAM010" onChange={(e) => set('code', e.target.value.toUpperCase().replace(/[^A-Z0-9._/-]/g, ''))} />
+          </Field>
           <Field label="Nome"><Input required value={p.name} onChange={(e) => set('name', e.target.value)} /></Field>
           <Field label="Marca"><Input value={p.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
           <Field label="Categoria">

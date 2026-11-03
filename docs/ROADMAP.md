@@ -35,4 +35,3 @@ O que a versão atual **não** faz ainda, em ordem de prioridade sugerida.
 - Fluxo de caixa e DRE (contas a receber além do crediário).
 - Frete calculado na loja online (Correios/Melhor Envio) e fotos múltiplas por produto.
 - Backup agendado do banco e exportação para Excel.
-- Migrações versionadas do Prisma (`prisma migrate`) a partir da primeira instalação em produção.

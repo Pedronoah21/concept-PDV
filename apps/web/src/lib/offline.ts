@@ -6,6 +6,7 @@ import { kv, outbox } from './idb';
 export interface CatalogVariant {
   id: string;
   productId: string;
+  productCode: string | null;
   name: string;
   brand: string | null;
   color: string | null;

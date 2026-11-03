@@ -86,6 +86,36 @@ describe('fluxo completo do Concept PDV', () => {
     assert.equal((await stockOf(ids.vM)).quantity, 10);
   });
 
+  it('código do produto: informado, único, herdado pelas variações e editável', async () => {
+    const base = { ncm: '61091000', variants: [{ color: 'Azul', priceCents: 100 }, { color: 'Rosa', priceCents: 100 }] };
+    const a = await call('admin', 'POST', '/products', { ...base, name: 'Regata', code: 'reg-01' });
+    assert.equal(a.status, 200, JSON.stringify(a.body));
+    assert.equal(a.body.code, 'REG-01', 'guarda em maiúsculas');
+    assert.deepEqual(a.body.variants.map((v: any) => v.sku).sort(), ['REG-01-1', 'REG-01-2']);
+
+    const dup = await call('admin', 'POST', '/products', { ...base, name: 'Outra', code: 'REG-01' });
+    assert.equal(dup.status, 409);
+    assert.equal(dup.body.code, 'CODIGO_DUPLICADO');
+
+    const auto = await call('admin', 'POST', '/products', { ...base, name: 'Sem código' });
+    assert.match(auto.body.code, /^\d{5}$/);
+
+    const edit = await call('admin', 'PUT', `/products/${a.body.id}`, {
+      ...base,
+      name: 'Regata',
+      code: 'REG-02',
+      variants: [...a.body.variants.map((v: any) => ({ id: v.id, color: v.color, priceCents: 100 })), { color: 'Verde', priceCents: 100 }],
+    });
+    assert.equal(edit.status, 200, JSON.stringify(edit.body));
+    assert.deepEqual(edit.body.variants.map((v: any) => v.sku).sort(), ['REG-02-1', 'REG-02-2', 'REG-02-3']);
+
+    const found = await call('admin', 'GET', '/products?q=reg-02');
+    assert.equal(found.body.length, 1);
+    const cat = await call('admin', 'GET', `/sync/catalog?storeId=${ids.store}`);
+    assert.ok(cat.body.variants.some((v: any) => v.productCode === 'REG-02'));
+    assert.equal((await call('admin', 'PUT', `/products/${a.body.id}`, { ...base, name: 'Regata', code: auto.body.code })).status, 409);
+  });
+
   it('operador de caixa não pode ajustar estoque', async () => {
     const r = await call('caixa', 'POST', '/stock/adjust', { variantId: ids.vM, storeId: ids.store, type: 'AJUSTE', quantity: 5, reason: 'teste' });
     assert.equal(r.status, 403);

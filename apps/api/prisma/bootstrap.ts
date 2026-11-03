@@ -12,7 +12,21 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+/** Produtos anteriores ao campo "código" recebem o código que as variações já usavam. */
+async function backfillProductCodes() {
+  const n = await prisma.$executeRaw`
+    UPDATE "Product" p SET code = sub.code
+    FROM (
+      SELECT DISTINCT ON (v."productId") v."productId", split_part(v.sku, '-', 1) AS code
+      FROM "Variant" v ORDER BY v."productId", v.sku
+    ) sub
+    WHERE p.id = sub."productId" AND p.code IS NULL
+      AND NOT EXISTS (SELECT 1 FROM "Product" o WHERE o."companyId" = p."companyId" AND o.code = sub.code)`;
+  if (n) console.log(`bootstrap: ${n} produto(s) receberam código.`);
+}
+
 async function main() {
+  await backfillProductCodes();
   const { COMPANY_NAME, COMPANY_SLUG, ADMIN_EMAIL, ADMIN_PASSWORD } = process.env;
   if (!COMPANY_NAME || !COMPANY_SLUG || !ADMIN_EMAIL || !ADMIN_PASSWORD) {
     console.log('bootstrap: variáveis COMPANY_* / ADMIN_* não definidas — nada a fazer.');

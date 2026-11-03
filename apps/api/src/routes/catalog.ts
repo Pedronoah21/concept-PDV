@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { internalEAN13, onlyDigits } from '@concept/shared';
 import { z } from 'zod';
-import { audit, nextNumber, prisma } from '../db';
+import { audit, nextNumber, prisma, type Tx } from '../db';
 import { can, guard, requireAuth } from '../lib/auth';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { parse } from '../lib/http';
@@ -23,6 +23,13 @@ const variantInput = z.object({
 });
 
 const productInput = z.object({
+  code: z
+    .string()
+    .trim()
+    .max(30)
+    .regex(/^[A-Za-z0-9._/-]*$/, 'Código: use só letras, números, ponto, barra, traço ou sublinhado')
+    .nullish()
+    .transform((c) => (c ? c.toUpperCase() : null)),
   name: z.string().min(2),
   description: z.string().nullish(),
   brand: z.string().nullish(),
@@ -65,6 +72,19 @@ const transferInput = z.object({
   toStoreId: z.string(),
   quantity: z.number().int().positive(),
 });
+
+/** Próximo código livre no formato 00001, pulando os que a loja já usou manualmente. */
+async function freeProductCode(tx: Tx, companyId: string) {
+  for (;;) {
+    const code = String(await nextNumber(tx, companyId, 'product')).padStart(5, '0');
+    if (!(await tx.product.findFirst({ where: { companyId, code }, select: { id: true } }))) return code;
+  }
+}
+
+async function assertCodeFree(tx: Tx, companyId: string, code: string, exceptId?: string) {
+  const other = await tx.product.findFirst({ where: { companyId, code, ...(exceptId ? { NOT: { id: exceptId } } : {}) }, select: { name: true } });
+  if (other) throw conflict(`O código ${code} já é do produto "${other.name}"`, 'CODIGO_DUPLICADO');
+}
 
 export default async function catalogRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
@@ -109,6 +129,7 @@ export default async function catalogRoutes(app: FastifyInstance) {
           ? {
               OR: [
                 { name: { contains: term, mode: 'insensitive' } },
+                { code: { equals: term, mode: 'insensitive' } },
                 { brand: { contains: term, mode: 'insensitive' } },
                 { variants: { some: { OR: [{ barcode: term }, { sku: { equals: term, mode: 'insensitive' } }] } } },
               ],
@@ -142,10 +163,11 @@ export default async function catalogRoutes(app: FastifyInstance) {
 
   app.post('/products', { preHandler: guard('produto:editar') }, async (req) => {
     const body = parse(productInput, req.body);
-    const { variants, storeId, ...data } = body;
+    const { variants, storeId, code: wanted, ...data } = body;
     return prisma.$transaction(async (tx) => {
-      const product = await tx.product.create({ data: { ...data, companyId: req.user.companyId } });
-      const code = await nextNumber(tx, req.user.companyId, 'product');
+      const code = wanted ?? (await freeProductCode(tx, req.user.companyId));
+      await assertCodeFree(tx, req.user.companyId, code);
+      const product = await tx.product.create({ data: { ...data, code, companyId: req.user.companyId } });
       for (const [i, v] of variants.entries()) {
         if (v.barcode) {
           const dup = await tx.variant.findFirst({ where: { barcode: v.barcode, product: { companyId: req.user.companyId } } });
@@ -155,7 +177,7 @@ export default async function catalogRoutes(app: FastifyInstance) {
         const created = await tx.variant.create({
           data: {
             productId: product.id,
-            sku: v.sku || `${String(code).padStart(5, '0')}${variants.length > 1 ? '-' + (i + 1) : ''}`,
+            sku: v.sku || `${code}${variants.length > 1 ? '-' + (i + 1) : ''}`,
             barcode,
             color: v.color,
             size: v.size,
@@ -187,13 +209,30 @@ export default async function catalogRoutes(app: FastifyInstance) {
   app.put('/products/:id', { preHandler: guard('produto:editar') }, async (req) => {
     const { id } = req.params as { id: string };
     const body = parse(productInput, req.body);
-    const { variants, storeId: _s, ...data } = body;
+    const { variants, storeId: _s, code: wanted, ...data } = body;
     return prisma.$transaction(async (tx) => {
       const current = await tx.product.findFirst({ where: { id, companyId: req.user.companyId }, include: { variants: true } });
       if (!current) throw notFound('Produto');
-      await tx.product.update({ where: { id }, data });
-      const code = current.variants[0]?.sku.split('-')[0] ?? String(await nextNumber(tx, req.user.companyId, 'product'));
+      const oldCode = current.code ?? current.variants[0]?.sku.split('-')[0] ?? null;
+      const code = wanted ?? oldCode ?? (await freeProductCode(tx, req.user.companyId));
+      if (code !== current.code) await assertCodeFree(tx, req.user.companyId, code, id);
+      await tx.product.update({ where: { id }, data: { ...data, code } });
+      // Trocou o código do produto: as variações que seguiam o código antigo acompanham.
+      if (oldCode && code !== oldCode) {
+        for (const cv of current.variants) {
+          if (cv.sku === oldCode || cv.sku.startsWith(oldCode + '-')) {
+            await tx.variant.update({ where: { id: cv.id }, data: { sku: code + cv.sku.slice(oldCode.length) } });
+          }
+        }
+      }
+      const used = new Set(current.variants.map((cv) => cv.sku.replace(oldCode ?? '', code)));
       let nextSuffix = current.variants.length + 1;
+      const nextSku = () => {
+        while (used.has(`${code}-${nextSuffix}`)) nextSuffix++;
+        const s = `${code}-${nextSuffix++}`;
+        used.add(s);
+        return s;
+      };
       for (const v of variants) {
         if (v.barcode) {
           const dup = await tx.variant.findFirst({ where: { barcode: v.barcode, product: { companyId: req.user.companyId }, NOT: v.id ? { id: v.id } : undefined } });
@@ -208,7 +247,7 @@ export default async function catalogRoutes(app: FastifyInstance) {
             data: {
               ...fields,
               productId: id,
-              sku: v.sku || `${code}-${nextSuffix++}`,
+              sku: v.sku || nextSku(),
               barcode: v.barcode || internalEAN13(await nextNumber(tx, req.user.companyId, 'ean')),
             },
           });
