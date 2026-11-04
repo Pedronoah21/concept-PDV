@@ -100,7 +100,9 @@ NODE_ENV=production COOKIE_SECRET=<segredo-longo> DATABASE_URL=<postgres> \
   pnpm --filter @concept/api start
 ```
 
-A API entrega o app compilado no mesmo endereço (porta 3333). Coloque um proxy com HTTPS
+A API entrega o app compilado no mesmo endereço (porta 3333). No Render, o build roda
+`pnpm --filter @concept/api deploy:prepare`, que aplica as migrações pendentes; com o GitHub
+conectado, cada envio ao `main` publica uma nova versão sozinho. Coloque um proxy com HTTPS
 (Caddy, Nginx, Cloudflare) na frente: o navegador só instala o PWA e libera a impressão direta
 em endereço seguro.
 
