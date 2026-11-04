@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { internalEAN13, onlyDigits } from '@concept/shared';
 import { z } from 'zod';
 import { audit, nextNumber, prisma, type Tx } from '../db';
-import { can, guard, requireAuth } from '../lib/auth';
+import { can, guard, requireAuth, soldInStore } from '../lib/auth';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { parse } from '../lib/http';
 import { moveStock } from '../services/stock';
@@ -49,6 +49,8 @@ const productInput = z.object({
   cstCofins: z.string().default('49'),
   variants: z.array(variantInput).min(1),
   storeId: z.string().optional(),
+  /** Lojas onde o produto é vendido. Vazio = todas. */
+  storeIds: z.array(z.string()).max(200).default([]),
 });
 
 const adjustInput = z.object({
@@ -79,6 +81,12 @@ async function freeProductCode(tx: Tx, companyId: string) {
     const code = String(await nextNumber(tx, companyId, 'product')).padStart(5, '0');
     if (!(await tx.product.findFirst({ where: { companyId, code }, select: { id: true } }))) return code;
   }
+}
+
+async function assertStores(tx: Tx, companyId: string, storeIds: string[]) {
+  if (!storeIds.length) return;
+  const n = await tx.store.count({ where: { id: { in: storeIds }, companyId } });
+  if (n !== new Set(storeIds).size) throw badRequest('Loja inválida no produto');
 }
 
 async function assertCodeFree(tx: Tx, companyId: string, code: string, exceptId?: string) {
@@ -118,10 +126,12 @@ export default async function catalogRoutes(app: FastifyInstance) {
 
   // ---------------- Produtos ----------------
   app.get('/products', async (req) => {
-    const q = req.query as { q?: string; storeId?: string; categoryId?: string; inactive?: string };
+    const q = req.query as { q?: string; storeId?: string; categoryId?: string; inactive?: string; soldIn?: string };
     const term = q.q?.trim();
+    const soldIn = req.user.storeId ?? q.soldIn;
     const products = await prisma.product.findMany({
       where: {
+        AND: soldIn ? [soldInStore(soldIn)] : [],
         companyId: req.user.companyId,
         ...(q.inactive ? {} : { active: true }),
         ...(q.categoryId ? { categoryId: q.categoryId } : {}),
@@ -136,7 +146,11 @@ export default async function catalogRoutes(app: FastifyInstance) {
             }
           : {}),
       },
-      include: { category: true, variants: { include: { balances: true }, orderBy: [{ color: 'asc' }, { size: 'asc' }] } },
+      include: {
+        category: true,
+        stores: { select: { storeId: true, store: { select: { name: true } } } },
+        variants: { include: { balances: true }, orderBy: [{ color: 'asc' }, { size: 'asc' }] },
+      },
       orderBy: { name: 'asc' },
       take: 500,
     });
@@ -155,7 +169,7 @@ export default async function catalogRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const p = await prisma.product.findFirst({
       where: { id, companyId: req.user.companyId },
-      include: { category: true, variants: { include: { balances: { include: { store: { select: { name: true } } } } } } },
+      include: { category: true, stores: { select: { storeId: true } }, variants: { include: { balances: { include: { store: { select: { name: true } } } } } } },
     });
     if (!p) throw notFound('Produto');
     return p;
@@ -163,11 +177,14 @@ export default async function catalogRoutes(app: FastifyInstance) {
 
   app.post('/products', { preHandler: guard('produto:editar') }, async (req) => {
     const body = parse(productInput, req.body);
-    const { variants, storeId, code: wanted, ...data } = body;
+    const { variants, storeId, storeIds, code: wanted, ...data } = body;
     return prisma.$transaction(async (tx) => {
+      await assertStores(tx, req.user.companyId, storeIds);
       const code = wanted ?? (await freeProductCode(tx, req.user.companyId));
       await assertCodeFree(tx, req.user.companyId, code);
-      const product = await tx.product.create({ data: { ...data, code, companyId: req.user.companyId } });
+      const product = await tx.product.create({
+        data: { ...data, code, companyId: req.user.companyId, stores: { create: storeIds.map((sid) => ({ storeId: sid })) } },
+      });
       for (const [i, v] of variants.entries()) {
         if (v.barcode) {
           const dup = await tx.variant.findFirst({ where: { barcode: v.barcode, product: { companyId: req.user.companyId } } });
@@ -209,14 +226,17 @@ export default async function catalogRoutes(app: FastifyInstance) {
   app.put('/products/:id', { preHandler: guard('produto:editar') }, async (req) => {
     const { id } = req.params as { id: string };
     const body = parse(productInput, req.body);
-    const { variants, storeId: _s, code: wanted, ...data } = body;
+    const { variants, storeId: _s, storeIds, code: wanted, ...data } = body;
     return prisma.$transaction(async (tx) => {
+      await assertStores(tx, req.user.companyId, storeIds);
       const current = await tx.product.findFirst({ where: { id, companyId: req.user.companyId }, include: { variants: true } });
       if (!current) throw notFound('Produto');
       const oldCode = current.code ?? current.variants[0]?.sku.split('-')[0] ?? null;
       const code = wanted ?? oldCode ?? (await freeProductCode(tx, req.user.companyId));
       if (code !== current.code) await assertCodeFree(tx, req.user.companyId, code, id);
       await tx.product.update({ where: { id }, data: { ...data, code } });
+      await tx.productStore.deleteMany({ where: { productId: id } });
+      if (storeIds.length) await tx.productStore.createMany({ data: storeIds.map((sid) => ({ productId: id, storeId: sid })) });
       // Trocou o código do produto: as variações que seguiam o código antigo acompanham.
       if (oldCode && code !== oldCode) {
         for (const cv of current.variants) {
@@ -264,10 +284,12 @@ export default async function catalogRoutes(app: FastifyInstance) {
   // ---------------- Estoque ----------------
   app.get('/stock', async (req) => {
     const q = req.query as { storeId?: string; low?: string; q?: string; categoryId?: string };
+    if (req.user.storeId) q.storeId = req.user.storeId;
     const variants = await prisma.variant.findMany({
       where: {
         active: true,
         product: {
+          ...(q.storeId ? soldInStore(q.storeId) : {}),
           companyId: req.user.companyId,
           active: true,
           ...(q.q ? { name: { contains: q.q, mode: 'insensitive' } } : {}),

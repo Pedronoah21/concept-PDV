@@ -37,7 +37,24 @@ const userInput = z.object({
   role: z.enum(['ADMIN', 'GERENTE', 'CAIXA', 'VENDEDOR']),
   maxDiscountPct: z.number().int().min(0).max(100),
   active: z.boolean().default(true),
+  /** Loja do usuário (vazio = todas) e caixa que abre direto ao entrar */
+  storeId: z.string().nullish(),
+  registerId: z.string().nullish(),
 });
+
+/** Confere loja e caixa do usuário: precisam ser da empresa, e o caixa da loja escolhida. */
+async function userStoreData(companyId: string, body: { role: string; storeId?: string | null; registerId?: string | null }) {
+  const storeId = body.storeId || null;
+  const registerId = body.registerId || null;
+  if (!storeId && ['CAIXA', 'VENDEDOR'].includes(body.role)) throw badRequest('Escolha a loja do operador de caixa ou vendedor');
+  if (storeId && !(await prisma.store.findFirst({ where: { id: storeId, companyId } }))) throw badRequest('Loja inválida');
+  if (registerId) {
+    const r = await prisma.register.findFirst({ where: { id: registerId, store: { companyId } } });
+    if (!r || (storeId && r.storeId !== storeId)) throw badRequest('O caixa padrão precisa ser da loja do usuário');
+    if (!storeId) throw badRequest('Escolha a loja antes do caixa padrão');
+  }
+  return { storeId, registerId };
+}
 
 export default async function adminRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
@@ -83,16 +100,17 @@ export default async function adminRoutes(app: FastifyInstance) {
   app.get('/users', { preHandler: guard('config:editar') }, async (req) =>
     prisma.user.findMany({
       where: { companyId: req.user.companyId },
-      select: { id: true, name: true, email: true, role: true, maxDiscountPct: true, active: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, maxDiscountPct: true, active: true, createdAt: true, storeId: true, registerId: true, store: { select: { name: true } }, register: { select: { name: true } } },
       orderBy: { name: 'asc' },
     }),
   );
   app.post('/users', { preHandler: guard('config:editar') }, async (req) => {
     const body = parse(userInput, req.body);
     if (!body.password) throw badRequest('Defina uma senha com ao menos 8 caracteres');
-    const { password, ...data } = body;
+    const { password, storeId: _s, registerId: _r, ...data } = body;
+    const link = await userStoreData(req.user.companyId, body);
     return prisma.user.create({
-      data: { ...data, email: data.email.toLowerCase(), passwordHash: await hashPassword(password), companyId: req.user.companyId },
+      data: { ...data, ...link, email: data.email.toLowerCase(), passwordHash: await hashPassword(password), companyId: req.user.companyId },
       select: { id: true, name: true, email: true, role: true },
     });
   });
@@ -102,10 +120,11 @@ export default async function adminRoutes(app: FastifyInstance) {
     const u = await prisma.user.findFirst({ where: { id, companyId: req.user.companyId } });
     if (!u) throw notFound('Usuário');
     if (id === req.user.id && (body.role !== 'ADMIN' || !body.active)) throw badRequest('Você não pode remover o próprio acesso de administrador');
-    const { password, ...data } = body;
+    const { password, storeId: _s, registerId: _r, ...data } = body;
+    const link = await userStoreData(req.user.companyId, body);
     await prisma.user.update({
       where: { id },
-      data: { ...data, email: data.email.toLowerCase(), ...(password ? { passwordHash: await hashPassword(password) } : {}) },
+      data: { ...data, ...link, email: data.email.toLowerCase(), ...(password ? { passwordHash: await hashPassword(password) } : {}) },
     });
     if (!body.active || password) await prisma.session.deleteMany({ where: { userId: id } });
     return { ok: true };

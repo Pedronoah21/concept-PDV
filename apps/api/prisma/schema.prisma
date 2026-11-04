@@ -78,6 +78,8 @@ model Store {
   company   Company    @relation(fields: [companyId], references: [id])
   registers Register[]
   balances  StockBalance[]
+  users     User[]
+  products  ProductStore[]
 
   @@index([companyId])
 }
@@ -91,6 +93,7 @@ model Register {
   active   Boolean       @default(true)
   store    Store         @relation(fields: [storeId], references: [id])
   sessions CashSession[]
+  users    User[]
 
   @@unique([storeId, code])
 }
@@ -104,11 +107,17 @@ model User {
   role             Role      @default(CAIXA)
   /// Desconto máximo (%) sem autorização de gerente
   maxDiscountPct   Int       @default(5)
+  /// Loja do usuário. Vazio = acesso a todas as lojas (administrador, gerente geral).
+  storeId          String?
+  /// Caixa que abre direto ao entrar (opcional)
+  registerId       String?
   active           Boolean   @default(true)
   failedLogins     Int       @default(0)
   lockedUntil      DateTime?
   createdAt        DateTime  @default(now())
   company          Company   @relation(fields: [companyId], references: [id])
+  store            Store?    @relation(fields: [storeId], references: [id])
+  register         Register? @relation(fields: [registerId], references: [id])
   sessions         Session[]
 
   @@unique([companyId, email])
@@ -181,9 +190,22 @@ model Product {
   company     Company   @relation(fields: [companyId], references: [id])
   category    Category? @relation(fields: [categoryId], references: [id])
   variants    Variant[]
+  /// Lojas onde o produto é vendido. Sem nenhuma = todas as lojas.
+  stores      ProductStore[]
 
   @@unique([companyId, code])
   @@index([companyId, name])
+}
+
+/// Produto direcionado a uma loja específica.
+model ProductStore {
+  productId String
+  storeId   String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store     Store   @relation(fields: [storeId], references: [id])
+
+  @@id([productId, storeId])
+  @@index([storeId])
 }
 
 /// Variação vendável (cor/tamanho). Produto sem grade tem uma variação única.

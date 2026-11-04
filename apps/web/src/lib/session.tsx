@@ -3,7 +3,17 @@ import { api, ApiError } from './api';
 import { kv } from './idb';
 
 export interface Me {
-  user: { id: string; name: string; email: string; role: 'ADMIN' | 'GERENTE' | 'CAIXA' | 'VENDEDOR'; maxDiscountPct: number; companyId: string };
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: 'ADMIN' | 'GERENTE' | 'CAIXA' | 'VENDEDOR';
+    maxDiscountPct: number;
+    companyId: string;
+    /** Loja do usuário (null = todas) e caixa padrão */
+    storeId: string | null;
+    registerId: string | null;
+  };
   company: { id: string; slug: string; tradeName: string; legalName: string; cnpj: string; ie: string | null; fiscalProvider: string; fiscalEnv: string; receiptFooter: string | null };
   stores: { id: string; name: string; isOnline: boolean; registers: { id: string; code: string; name: string }[] }[];
 }
@@ -63,14 +73,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setRegister(id);
   };
 
-  const store = me?.stores.find((s) => s.registers.some((r) => r.id === registerId)) ?? null;
-  const register = store?.registers.find((r) => r.id === registerId) ?? null;
+  // Caixa usado neste computador, na ordem: caixa padrão do usuário → o escolhido aqui antes
+  // (se ainda for da loja dele) → o único caixa disponível. Sem nada disso, a tela pede para escolher.
+  const allRegisters = me?.stores.flatMap((s) => s.registers) ?? [];
+  const effectiveRegister =
+    (me?.user.registerId && allRegisters.find((r) => r.id === me.user.registerId)?.id) ||
+    (registerId && allRegisters.find((r) => r.id === registerId)?.id) ||
+    (allRegisters.length === 1 ? allRegisters[0].id : null);
+  const store = me?.stores.find((s) => s.registers.some((r) => r.id === effectiveRegister)) ?? null;
+  const register = store?.registers.find((r) => r.id === effectiveRegister) ?? null;
   const role = me?.user.role;
 
   const value: SessionCtx = {
     me,
     loading,
-    registerId: register ? registerId : null,
+    registerId: register ? effectiveRegister : null,
     setRegisterId,
     store,
     register,

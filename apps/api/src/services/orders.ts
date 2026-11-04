@@ -3,7 +3,7 @@ import { onlyDigits } from '@concept/shared';
 import { z } from 'zod';
 import { audit, nextNumber, prisma } from '../db';
 import { badRequest, notFound } from '../lib/errors';
-import { assertCan, type AuthUser } from '../lib/auth';
+import { assertCan, soldInStore, type AuthUser } from '../lib/auth';
 import { moveStock, reserveStock } from './stock';
 import { effectivePrice } from './sales';
 import { enqueueFiscal } from '../fiscal/queue';
@@ -41,7 +41,7 @@ export async function publicCatalog(slug: string) {
   const store = await prisma.store.findFirst({ where: { companyId: company.id, isOnline: true, active: true } });
   if (!store) throw notFound('Loja online');
   const products = await prisma.product.findMany({
-    where: { companyId: company.id, active: true, onlineVisible: true },
+    where: { companyId: company.id, active: true, onlineVisible: true, ...soldInStore(store.id) },
     include: {
       category: { select: { name: true } },
       variants: { where: { active: true }, include: { balances: { where: { storeId: store.id } } } },
@@ -79,7 +79,7 @@ export async function createOrder(slug: string, input: z.infer<typeof orderInput
     const store = await tx.store.findFirst({ where: { companyId: company.id, isOnline: true, active: true } });
     if (!store) throw notFound('Loja online');
     const variants = await tx.variant.findMany({
-      where: { id: { in: input.items.map((i) => i.variantId) }, active: true, product: { companyId: company.id, active: true, onlineVisible: true } },
+      where: { id: { in: input.items.map((i) => i.variantId) }, active: true, product: { companyId: company.id, active: true, onlineVisible: true, ...soldInStore(store.id) } },
       include: { product: true },
     });
     const byId = new Map(variants.map((v) => [v.id, v]));

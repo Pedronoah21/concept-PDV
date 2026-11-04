@@ -59,7 +59,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.lg { min-height: 56px; font-size: 18px; }
 kbd { font: 600 11px var(--font); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; opacity: 0.7; }
 
-.field { display: grid; gap: 4px; }
+.field { display: grid; gap: 4px; align-content: start; }
 .field > span { font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .input, select.input, textarea.input {
   width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--line);

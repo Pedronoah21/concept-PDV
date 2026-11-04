@@ -2,7 +2,7 @@ import { PAYMENT_METHODS } from '@concept/shared';
 import { z } from 'zod';
 import { audit, prisma } from '../db';
 import { badRequest, conflict, notFound } from '../lib/errors';
-import { assertCan, can, type AuthUser } from '../lib/auth';
+import { assertCan, assertStore, can, type AuthUser } from '../lib/auth';
 
 export const openInput = z.object({ registerId: z.string(), openingCents: z.number().int().nonnegative() });
 export const movementInput = z.object({
@@ -29,6 +29,7 @@ export async function openSession(user: AuthUser, input: z.infer<typeof openInpu
   assertCan(user, 'caixa:operar');
   const register = await prisma.register.findFirst({ where: { id: input.registerId, store: { companyId: user.companyId } } });
   if (!register) throw notFound('Caixa');
+  assertStore(user, register.storeId);
   const open = await prisma.cashSession.findFirst({ where: { registerId: register.id, status: 'ABERTO' } });
   if (open) throw conflict('Este caixa já está aberto', 'CAIXA_JA_ABERTO');
   return prisma.cashSession.create({ data: { registerId: register.id, userId: user.id, openingCents: input.openingCents } });

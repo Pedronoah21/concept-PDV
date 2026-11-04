@@ -6,7 +6,8 @@ import { formatBRL } from '../lib/format';
 import { Field, Input, Loading, MoneyInput, toast, useAction, useLoad } from '../components/ui';
 
 export function ProductsPage() {
-  const { can, store } = useSession();
+  const { can, store, me } = useSession();
+  const multi = me!.stores.length > 1;
   const [q, setQ] = useState('');
   const { data, error, loading } = useLoad<any[]>(`/products?q=${encodeURIComponent(q)}${store ? `&storeId=${store.id}` : ''}`, [q]);
   return (
@@ -22,7 +23,7 @@ export function ProductsPage() {
       {data && (
         <div className="panel flush table-wrap">
           <table className="table">
-            <thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Variações</th><th className="r">Estoque</th><th className="r">Preço</th></tr></thead>
+            <thead><tr><th>Código</th><th>Produto</th>{multi && <th>Vendido em</th>}<th>Categoria</th><th>Variações</th><th className="r">Estoque</th><th className="r">Preço</th></tr></thead>
             <tbody>
               {data.map((p) => {
                 const prices = p.variants.map((v: any) => v.priceCents);
@@ -32,6 +33,7 @@ export function ProductsPage() {
                   <tr key={p.id} className="click" onClick={() => navigate(`/produtos/${p.id}`)}>
                     <td className="num">{p.code ?? '—'}</td>
                     <td><b>{p.name}</b> {p.brand && <span className="muted">{p.brand}</span>}</td>
+                    {multi && <td>{p.stores?.length ? p.stores.map((s: any) => s.store.name).join(', ') : <span className="muted">Todas</span>}</td>}
                     <td>{p.category?.name ?? '—'}</td>
                     <td>{p.variants.length}</td>
                     <td className="r num">{p.variants.reduce((a: number, v: any) => a + v.stock, 0)}</td>
@@ -39,7 +41,7 @@ export function ProductsPage() {
                   </tr>
                 );
               })}
-              {!data.length && <tr><td colSpan={6} className="empty">Nenhum produto encontrado. Cadastre o primeiro ou importe pelo XML de uma nota de compra.</td></tr>}
+              {!data.length && <tr><td colSpan={multi ? 7 : 6} className="empty">Nenhum produto encontrado. Cadastre o primeiro ou importe pelo XML de uma nota de compra.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -84,7 +86,11 @@ const emptyProduct = {
 };
 
 export function ProductFormPage({ id }: { id?: string }) {
-  const { store } = useSession();
+  const { store, me } = useSession();
+  const allStores = me!.stores;
+  // Gerente de uma loja cadastra direto para a loja dele; com uma loja só, o produto vale para ela.
+  const [storeIds, setStoreIds] = useState<string[]>(() => (me!.user.storeId && allStores.length ? [me!.user.storeId] : []));
+  const [onlySome, setOnlySome] = useState(() => !!me!.user.storeId);
   const categories = useLoad<any[]>('/categories');
   const [p, setP] = useState({ ...emptyProduct });
   const [variants, setVariants] = useState<VariantForm[]>([{ barcode: '', color: '', size: '', priceCents: 0, promoPriceCents: null, minStock: 2, active: true, initialStock: 0, initialCostCents: 0 }]);
@@ -96,6 +102,8 @@ export function ProductFormPage({ id }: { id?: string }) {
     if (!id) return;
     api<any>(`/products/${id}`).then((d) => {
       setP({ ...emptyProduct, ...Object.fromEntries(Object.entries(d).filter(([k]) => k in emptyProduct).map(([k, v]) => [k, v ?? ''])) } as typeof emptyProduct);
+      setStoreIds((d.stores ?? []).map((s: any) => s.storeId));
+      setOnlySome((d.stores ?? []).length > 0);
       setVariants(d.variants.filter((v: any) => v.active).map((v: any) => ({ id: v.id, sku: v.sku, barcode: v.barcode ?? '', color: v.color ?? '', size: v.size ?? '', priceCents: v.priceCents, promoPriceCents: v.promoPriceCents, minStock: v.minStock, active: v.active })));
     });
   }, [id]);
@@ -118,6 +126,7 @@ export function ProductFormPage({ id }: { id?: string }) {
   };
 
   const [save, saving] = useAction(async () => {
+    if (onlySome && !storeIds.length) throw new Error('Marque ao menos uma loja ou escolha "Todas as lojas"');
     const body = {
       ...p,
       categoryId: p.categoryId || null,
@@ -125,6 +134,7 @@ export function ProductFormPage({ id }: { id?: string }) {
       brand: p.brand || null,
       code: p.code || null,
       imageUrl: p.imageUrl || null,
+      storeIds: onlySome ? storeIds : [],
       cest: p.cest || null,
       cstIcms: p.cstIcms || null,
       storeId: store?.id,
@@ -182,6 +192,45 @@ export function ProductFormPage({ id }: { id?: string }) {
           <label className="check"><input type="checkbox" checked={p.active} onChange={(e) => set('active', e.target.checked)} /> Ativo</label>
         </div>
       </div>
+
+      {(allStores.length > 1 || onlySome) && (
+        <div className="panel stack">
+          <h2>Vendido em</h2>
+          <p className="muted small">O produto só aparece no caixa, no estoque e na loja online das lojas escolhidas.</p>
+          <div className="row">
+            <label className="check">
+              <input type="radio" name="soldIn" checked={!onlySome} disabled={!!me!.user.storeId} onChange={() => setOnlySome(false)} /> Todas as lojas
+            </label>
+            <label className="check">
+              <input
+                type="radio"
+                name="soldIn"
+                checked={onlySome}
+                onChange={() => {
+                  setOnlySome(true);
+                  if (!storeIds.length) setStoreIds([store?.id ?? allStores[0].id]);
+                }}
+              />{' '}
+              Só nas lojas escolhidas
+            </label>
+          </div>
+          {onlySome && (
+            <div className="row">
+              {allStores.map((s) => (
+                <label key={s.id} className="check" style={{ border: '1px solid var(--line)', borderRadius: 6, padding: '6px 10px' }}>
+                  <input
+                    type="checkbox"
+                    checked={storeIds.includes(s.id)}
+                    onChange={(e) => setStoreIds((ids) => (e.target.checked ? [...ids, s.id] : ids.filter((x) => x !== s.id)))}
+                  />
+                  {s.name}
+                  {s.isOnline && <span className="tag go">loja online</span>}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="panel stack">
         <h2>Tributação</h2>

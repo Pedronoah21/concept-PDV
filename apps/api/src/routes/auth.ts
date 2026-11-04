@@ -34,7 +34,11 @@ export default async function authRoutes(app: FastifyInstance) {
       where: { id: req.user.companyId },
       select: { id: true, slug: true, tradeName: true, legalName: true, cnpj: true, ie: true, phone: true, street: true, number: true, district: true, city: true, uf: true, receiptFooter: true, fiscalProvider: true, fiscalEnv: true },
     });
-    const stores = await prisma.store.findMany({ where: { companyId: company.id, active: true }, include: { registers: { where: { active: true } } } });
+    const stores = await prisma.store.findMany({
+      where: { companyId: company.id, active: true, ...(req.user.storeId ? { id: req.user.storeId } : {}) },
+      include: { registers: { where: { active: true }, orderBy: { code: 'asc' } } },
+      orderBy: { name: 'asc' },
+    });
     return { user: req.user, company, stores };
   });
 

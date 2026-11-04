@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { saleInput, type SaleInput } from '@concept/shared';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { assertCan, can, guard, requireAuth } from '../lib/auth';
+import { assertCan, can, guard, requireAuth, soldInStore } from '../lib/auth';
 import { AppError, notFound } from '../lib/errors';
 import { dateRange, parse } from '../lib/http';
 import { cancelInput, cancelSale, createSale, getSale, returnInput, returnItems } from '../services/sales';
@@ -22,10 +22,11 @@ export default async function salesRoutes(app: FastifyInstance) {
 
   // ---------------- Dados para o caixa trabalhar offline ----------------
   app.get('/sync/catalog', async (req) => {
-    const { storeId } = req.query as { storeId?: string };
+    const storeId = req.user.storeId ?? (req.query as { storeId?: string }).storeId;
     const [products, customers, company] = await Promise.all([
       prisma.product.findMany({
-        where: { companyId: req.user.companyId, active: true },
+        // O caixa só recebe os produtos vendidos na loja dele.
+        where: { companyId: req.user.companyId, active: true, ...(storeId ? soldInStore(storeId) : {}) },
         include: { variants: { where: { active: true }, include: { balances: storeId ? { where: { storeId } } : true } } },
       }),
       prisma.customer.findMany({

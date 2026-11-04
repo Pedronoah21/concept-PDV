@@ -161,6 +161,50 @@ describe('fluxo completo do Concept PDV', () => {
     assert.equal((await stockOf(ids.vM)).quantity, 18);
   });
 
+  it('usuário ligado à loja e produto direcionado a uma loja', async () => {
+    // Segunda loja com um caixa
+    const lojaB = await call('admin', 'POST', '/stores', { name: 'Shopping' });
+    assert.equal(lojaB.status, 200, JSON.stringify(lojaB.body));
+    const cxB = await call('admin', 'POST', `/stores/${lojaB.body.id}/registers`, { name: 'Caixa Shopping', code: 'SH01' });
+    ids.storeB = lojaB.body.id;
+
+    // Operador e vendedor precisam de loja; caixa padrão tem que ser da loja
+    const semLoja = await call('admin', 'POST', '/users', { name: 'Sem loja', email: `semloja@${slug}.com`, password: 'senha-forte-1', role: 'CAIXA', maxDiscountPct: 5 });
+    assert.equal(semLoja.status, 400);
+    const caixaErrado = await call('admin', 'POST', '/users', { name: 'Errado', email: `errado@${slug}.com`, password: 'senha-forte-1', role: 'CAIXA', maxDiscountPct: 5, storeId: ids.store, registerId: cxB.body.id });
+    assert.equal(caixaErrado.status, 400);
+    const opB = await call('admin', 'POST', '/users', { name: 'Operador Shopping', email: `opb@${slug}.com`, password: 'senha-forte-1', role: 'CAIXA', maxDiscountPct: 5, storeId: ids.storeB, registerId: cxB.body.id });
+    assert.equal(opB.status, 200, JSON.stringify(opB.body));
+    await login('opB', `opb@${slug}.com`);
+
+    // Ao entrar, o operador recebe só a loja dele e o caixa padrão
+    const me = await call('opB', 'GET', '/auth/me');
+    assert.deepEqual(me.body.stores.map((s: any) => s.id), [ids.storeB]);
+    assert.equal(me.body.user.registerId, cxB.body.id);
+
+    // Não abre caixa nem vende em outra loja
+    assert.equal((await call('opB', 'POST', '/cash/open', { registerId: ids.register, openingCents: 0 })).body.code, 'LOJA_DIFERENTE');
+    assert.equal((await call('opB', 'POST', '/sales', sale())).body.code, 'LOJA_DIFERENTE');
+
+    // Produto vendido só no Shopping
+    const p = await call('admin', 'POST', '/products', { name: 'Bolsa Exclusiva', ncm: '42022200', storeIds: [ids.storeB], variants: [{ priceCents: 9900 }] });
+    assert.equal(p.status, 200, JSON.stringify(p.body));
+    const bolsa = p.body.variants[0].id;
+    const has = (c: any) => c.body.variants.some((v: any) => v.id === bolsa);
+    assert.equal(has(await call('opB', 'GET', '/sync/catalog')), true, 'aparece no caixa do Shopping');
+    assert.equal(has(await call('caixa', 'GET', `/sync/catalog?storeId=${ids.store}`)), false, 'não aparece no Centro');
+    const naoVende = await call('caixa', 'POST', '/sales', sale({ items: [{ variantId: bolsa, quantity: 1, unitPriceCents: 9900, discountCents: 0 }], payments: [{ method: 'PIX', amountCents: 9900 }] }));
+    assert.equal(naoVende.body.code, 'PRODUTO_OUTRA_LOJA');
+    const loja = await call('anon', 'GET', `/public/${slug}/catalog`);
+    assert.ok(!loja.body.products.some((x: any) => x.id === p.body.id), 'loja online (Centro) não mostra');
+    assert.ok((await call('opB', 'GET', '/products')).body.every((x: any) => !x.stores.length || x.stores.some((s: any) => s.storeId === ids.storeB)));
+
+    // Editar para "todas as lojas" libera em todas
+    await call('admin', 'PUT', `/products/${p.body.id}`, { name: 'Bolsa Exclusiva', ncm: '42022200', storeIds: [], variants: [{ id: bolsa, priceCents: 9900 }] });
+    assert.equal(has(await call('caixa', 'GET', `/sync/catalog?storeId=${ids.store}`)), true);
+    await call('admin', 'PUT', `/products/${p.body.id}`, { name: 'Bolsa Exclusiva', ncm: '42022200', storeIds: [ids.storeB], variants: [{ id: bolsa, priceCents: 9900 }] });
+  });
+
   it('recusa troco em PIX e pagamento insuficiente', async () => {
     assert.equal((await call('caixa', 'POST', '/sales', sale({ payments: [{ method: 'PIX', amountCents: 12000 }] }))).status, 400);
     assert.equal((await call('caixa', 'POST', '/sales', sale({ payments: [{ method: 'DINHEIRO', amountCents: 9000 }] }))).status, 400);

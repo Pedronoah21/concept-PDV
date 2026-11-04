@@ -17,6 +17,10 @@ export interface AuthUser {
   email: string;
   role: Role;
   maxDiscountPct: number;
+  /** Loja do usuário; null = todas */
+  storeId: string | null;
+  /** Caixa padrão do usuário */
+  registerId: string | null;
 }
 
 declare module 'fastify' {
@@ -81,7 +85,7 @@ export async function requireAuth(req: FastifyRequest) {
     throw new AppError(401, 'Sessão expirada. Entre novamente.', 'NAO_AUTENTICADO');
   }
   const u = session.user;
-  req.user = { id: u.id, companyId: u.companyId, name: u.name, email: u.email, role: u.role, maxDiscountPct: u.maxDiscountPct };
+  req.user = { id: u.id, companyId: u.companyId, name: u.name, email: u.email, role: u.role, maxDiscountPct: u.maxDiscountPct, storeId: u.storeId, registerId: u.registerId };
 }
 
 /** Permissões por perfil. ADMIN pode tudo. */
@@ -107,6 +111,14 @@ export function can(user: AuthUser, permission: keyof typeof PERMISSIONS | strin
   if (user.role === 'ADMIN') return true;
   return (PERMISSIONS[permission] ?? []).includes(user.role);
 }
+
+/** Usuário ligado a uma loja só opera nela. */
+export function assertStore(user: AuthUser, storeId: string) {
+  if (user.storeId && user.storeId !== storeId) throw forbidden('Seu usuário é de outra loja', 'LOJA_DIFERENTE');
+}
+
+/** Filtro Prisma: produto vendido nesta loja (sem lojas definidas = vendido em todas). */
+export const soldInStore = (storeId: string) => ({ OR: [{ stores: { none: {} } }, { stores: { some: { storeId } } }] });
 
 export function assertCan(user: AuthUser, permission: string) {
   if (!can(user, permission)) throw forbidden();

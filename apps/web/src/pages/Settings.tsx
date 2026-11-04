@@ -130,10 +130,13 @@ function StoresSettings() {
 
 function UsersSettings() {
   const { data, reload } = useLoad<any[]>('/users');
+  const stores = useLoad<any[]>('/stores');
   const [edit, setEdit] = useState<any | null>(null);
   const [save, busy] = useAction(async () => {
-    const { id, ...body } = edit;
+    const { id, store: _st, register: _rg, createdAt: _c, ...body } = edit;
     if (!body.password) delete body.password;
+    body.storeId = body.storeId || null;
+    body.registerId = body.registerId || null;
     await api(id ? `/users/${id}` : '/users', { method: id ? 'PUT' : 'POST', body });
     toast('Usuário salvo');
     setEdit(null);
@@ -143,16 +146,18 @@ function UsersSettings() {
     <div className="panel flush">
       <div className="spread" style={{ padding: 16 }}>
         <h2>Usuários</h2>
-        <button className="btn sm primary" onClick={() => setEdit({ name: '', email: '', password: '', role: 'CAIXA', maxDiscountPct: 5, active: true })}>Novo usuário</button>
+        <button className="btn sm primary" onClick={() => setEdit({ name: '', email: '', password: '', role: 'CAIXA', maxDiscountPct: 5, active: true, storeId: stores.data?.length === 1 ? stores.data[0].id : '', registerId: '' })}>Novo usuário</button>
       </div>
       <table className="table">
-        <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th className="r">Desconto máx.</th><th /></tr></thead>
+        <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Loja</th><th>Caixa padrão</th><th className="r">Desconto máx.</th><th /></tr></thead>
         <tbody>
           {data?.map((u) => (
             <tr key={u.id}>
               <td>{u.name} {!u.active && <span className="tag danger">inativo</span>}</td>
               <td>{u.email}</td>
               <td>{ROLE_LABEL[u.role]}</td>
+              <td>{u.store?.name ?? <span className="muted">Todas</span>}</td>
+              <td>{u.register?.name ?? <span className="muted">Escolhe ao entrar</span>}</td>
               <td className="r num">{u.maxDiscountPct}%</td>
               <td className="r"><button className="btn sm" onClick={() => setEdit({ ...u, password: '' })}>Editar</button></td>
             </tr>
@@ -171,6 +176,20 @@ function UsersSettings() {
               </select>
             </Field>
             <Field label="Desconto máximo sem gerente (%)"><Input type="number" min={0} max={100} value={edit.maxDiscountPct} onChange={(e) => setEdit({ ...edit, maxDiscountPct: Number(e.target.value) })} /></Field>
+          </div>
+          <div className="grid cols-2">
+            <Field label="Loja" hint="O usuário só vê e opera esta loja. Operador de caixa e vendedor precisam de uma.">
+              <select className="input" value={edit.storeId ?? ''} onChange={(e) => setEdit({ ...edit, storeId: e.target.value, registerId: '' })}>
+                <option value="">Todas as lojas</option>
+                {stores.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Caixa padrão" hint="Abre direto ao entrar, sem perguntar.">
+              <select className="input" value={edit.registerId ?? ''} disabled={!edit.storeId} onChange={(e) => setEdit({ ...edit, registerId: e.target.value })}>
+                <option value="">{edit.storeId ? 'Perguntar ao entrar (ou o único caixa)' : 'Escolha a loja primeiro'}</option>
+                {stores.data?.find((s) => s.id === edit.storeId)?.registers.map((r: any) => <option key={r.id} value={r.id}>{r.name} ({r.code})</option>)}
+              </select>
+            </Field>
           </div>
           <label className="check"><input type="checkbox" checked={edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} /> Ativo</label>
           <p className="muted small">Gerente: vendas, estoque, compras, relatórios e autoriza descontos. Operador de caixa: frente de caixa, caixa e crediário. Vendedor: vendas e clientes. Administrador: tudo, inclusive estas configurações.</p>

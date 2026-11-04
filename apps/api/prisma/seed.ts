@@ -46,7 +46,7 @@ async function main() {
     data: [
       { companyId: company.id, name: 'Administrador', email: 'admin@demo.com', passwordHash: pass, role: 'ADMIN', maxDiscountPct: 100 },
       { companyId: company.id, name: 'Gerente', email: 'gerente@demo.com', passwordHash: pass, role: 'GERENTE', maxDiscountPct: 30 },
-      { companyId: company.id, name: 'Operador de Caixa', email: 'caixa@demo.com', passwordHash: pass, role: 'CAIXA', maxDiscountPct: 5 },
+      { companyId: company.id, name: 'Operador de Caixa', email: 'caixa@demo.com', passwordHash: pass, role: 'CAIXA', maxDiscountPct: 5, storeId: loja.id },
     ],
   });
 

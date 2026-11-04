@@ -10,7 +10,7 @@ import {
 import { z } from 'zod';
 import { audit, nextNumber, prisma, type Tx } from '../db';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
-import { assertCan, type AuthUser, verifyApproval } from '../lib/auth';
+import { assertCan, assertStore, type AuthUser, verifyApproval } from '../lib/auth';
 import { moveStock } from './stock';
 import { enqueueFiscal } from '../fiscal/queue';
 
@@ -58,6 +58,7 @@ export async function createSale(user: AuthUser, input: SaleInput) {
           where: { id: input.registerId, store: { companyId: user.companyId } },
         });
         if (!register) throw notFound('Caixa');
+        assertStore(user, register.storeId);
         const session = await tx.cashSession.findFirst({ where: { id: input.cashSessionId, registerId: register.id } });
         if (!session) throw notFound('Sessão de caixa');
         // Venda feita offline pode chegar depois do fechamento — o caixa já recebeu o dinheiro.
@@ -65,10 +66,15 @@ export async function createSale(user: AuthUser, input: SaleInput) {
 
         const variants = await tx.variant.findMany({
           where: { id: { in: input.items.map((i) => i.variantId) }, product: { companyId: user.companyId } },
-          include: { product: true },
+          include: { product: { include: { stores: { select: { storeId: true } } } } },
         });
         const byId = new Map(variants.map((v) => [v.id, v]));
         for (const it of input.items) if (!byId.has(it.variantId)) throw badRequest('Produto não encontrado na venda');
+        // Produto direcionado a outras lojas: bloqueia online; offline a venda já aconteceu e vai para revisão.
+        const foreign = variants.filter((v) => v.product.stores.length && !v.product.stores.some((s) => s.storeId === register.storeId));
+        if (foreign.length && !input.offline) {
+          throw badRequest(`${foreign[0].product.name} não é vendido nesta loja`, 'PRODUTO_OUTRA_LOJA');
+        }
 
         let totals: ReturnType<typeof computeCart>;
         let changeCents: number;
@@ -83,7 +89,7 @@ export async function createSale(user: AuthUser, input: SaleInput) {
         const catalogGross = input.items.reduce((a, it) => a + it.quantity * effectivePrice(byId.get(it.variantId)!), 0);
         const effectiveDiscount = Math.max(0, catalogGross - totals.totalCents);
         const pct = discountPercent(catalogGross, effectiveDiscount);
-        let needsReview = false;
+        let needsReview = foreign.length > 0;
         let approvedById: string | null = null;
         if (pct > user.maxDiscountPct + 0.001) {
           const approval = verifyApproval(input.approvalToken, user.companyId, 'desconto');
