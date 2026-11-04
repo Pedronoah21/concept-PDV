@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { PAYMENT_LABELS, type PaymentMethod } from '@concept/shared';
+import { PAYMENT_LABELS, type CashReportData, type PaymentMethod } from '@concept/shared';
 import { api } from '../lib/api';
 import { useSession } from '../lib/session';
 import { Link } from '../lib/router';
 import { kv } from '../lib/idb';
 import { formatBRL, fmtDateTime } from '../lib/format';
 import { Field, Input, Loading, Modal, MoneyInput, toast, useAction, useLoad } from '../components/ui';
-import { connectSerialPrinter, getPrinterSettings, printReceipt, savePrinterSettings, type PrinterSettings } from '../lib/print';
+import { connectSerialPrinter, getPrinterSettings, printCashReport, printReceipt, savePrinterSettings, type PrinterSettings } from '../lib/print';
 
 const COUNT_METHODS: PaymentMethod[] = ['DINHEIRO', 'PIX', 'DEBITO', 'CREDITO', 'OUTRO'];
 
@@ -18,6 +18,48 @@ interface Summary {
   expected: Record<PaymentMethod, number> | null;
   counted: Record<string, number> | null;
   differenceCents: number | null;
+  report: {
+    company: string;
+    store: string;
+    openedBy: string | null;
+    closedBy: string | null;
+    canceledCount: number;
+    salesByMethod: Partial<Record<PaymentMethod, number>>;
+    changeCents: number;
+    movements: { type: string; method: string; amountCents: number; reason: string | null; at: string }[];
+    notes: string | null;
+  };
+}
+
+function toReport(s: Summary): CashReportData {
+  return {
+    company: s.report.company,
+    register: `${s.report.store} — ${s.session.register}`,
+    openedAt: s.session.openedAt,
+    closedAt: s.session.closedAt,
+    openedBy: s.report.openedBy,
+    closedBy: s.report.closedBy,
+    openingCents: s.session.openingCents,
+    salesCount: s.salesCount,
+    salesTotalCents: s.salesTotalCents,
+    canceledCount: s.report.canceledCount,
+    salesByMethod: s.report.salesByMethod,
+    changeCents: s.report.changeCents,
+    movements: s.report.movements,
+    expected: s.expected ?? {},
+    counted: (s.counted as Partial<Record<PaymentMethod, number>>) ?? null,
+    differenceCents: s.differenceCents,
+    notes: s.report.notes,
+  };
+}
+
+/** Busca o fechamento completo e imprime (serve para o atual e para os anteriores). */
+async function printSession(id: string) {
+  try {
+    await printCashReport(toReport(await api<Summary>(`/cash/${id}`)));
+  } catch (e) {
+    toast((e as Error).message);
+  }
 }
 
 export function CashPage() {
@@ -74,7 +116,7 @@ export function CashPage() {
           <div style={{ padding: 16 }}><h2>Fechamentos anteriores</h2></div>
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Caixa</th><th>Abertura</th><th>Fechamento</th><th className="r">Diferença</th></tr></thead>
+              <thead><tr><th>Caixa</th><th>Abertura</th><th>Fechamento</th><th className="r">Diferença</th><th /></tr></thead>
               <tbody>
                 {history.data.map((s) => (
                   <tr key={s.id}>
@@ -84,6 +126,7 @@ export function CashPage() {
                     <td className={`r num ${s.differenceCents ? (s.differenceCents < 0 ? 'tag danger' : 'tag warn') : ''}`}>
                       {s.differenceCents == null ? '—' : formatBRL(s.differenceCents)}
                     </td>
+                    <td className="r">{s.closedAt && <button className="btn sm" onClick={() => printSession(s.id)}>Imprimir</button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -102,6 +145,8 @@ export function CashPage() {
           onDone={async (s) => {
             setModal(null);
             setClosed(s);
+            printCashReport(toReport(s)).catch((e) => toast((e as Error).message));
+            history.reload();
             await kv.del(`cash:${registerId}`);
             current.setData(null);
           }}
@@ -155,7 +200,10 @@ function ClosedReport({ s }: { s: Summary }) {
   const diff = s.differenceCents ?? 0;
   return (
     <div className="panel stack">
-      <h2>Caixa fechado</h2>
+      <div className="spread">
+        <h2>Caixa fechado</h2>
+        <button className="btn primary" onClick={() => printCashReport(toReport(s)).catch((e) => toast(e.message))}>Imprimir fechamento</button>
+      </div>
       <div className="table-wrap">
         <table className="table">
           <thead><tr><th>Forma</th><th className="r">Esperado</th><th className="r">Contado</th><th className="r">Diferença</th></tr></thead>
@@ -214,6 +262,7 @@ function PrinterSetup() {
         </Field>
         <div className="stack" style={{ gap: 6, alignContent: 'end' }}>
           <label className="check"><input type="checkbox" checked={s.autoPrint} onChange={(e) => update({ autoPrint: e.target.checked })} /> Imprimir ao concluir a venda</label>
+          <label className="check"><input type="checkbox" checked={s.twoCopies} onChange={(e) => update({ twoCopies: e.target.checked })} /> Duas vias (cliente e loja)</label>
           {s.mode === 'serial' && <label className="check"><input type="checkbox" checked={s.openDrawer} onChange={(e) => update({ openDrawer: e.target.checked })} /> Abrir gaveta em vendas com dinheiro</label>}
         </div>
       </div>

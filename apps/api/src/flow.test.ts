@@ -251,6 +251,13 @@ describe('fluxo completo do Concept PDV', () => {
     const closed = await call('caixa', 'POST', `/cash/${ids.session}/close`, { counted: { DINHEIRO: expectedCash - 100, PIX: mgr.body.expected.PIX } });
     assert.equal(closed.status, 200, JSON.stringify(closed.body));
     assert.equal(closed.body.differenceCents, -100);
+    // Dados do relatório impresso de fechamento
+    assert.equal(closed.body.session.status, 'FECHADO');
+    assert.equal(closed.body.report.closedBy, 'CAIXA');
+    assert.equal(closed.body.report.openedBy, 'CAIXA');
+    assert.ok(closed.body.report.canceledCount >= 1);
+    assert.ok(closed.body.report.movements.some((m: any) => m.type === 'SANGRIA' && m.amountCents === 5000 && m.reason === 'cofre'));
+    assert.ok(closed.body.report.salesByMethod.DINHEIRO > 0);
     assert.equal((await call('caixa', 'POST', '/sales', sale())).body.code, 'CAIXA_FECHADO');
   });
 

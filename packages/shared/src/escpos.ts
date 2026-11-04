@@ -16,9 +16,17 @@ const CP850: Record<string, number> = {
   'õ': 0xe4, 'Õ': 0xe5, 'Ú': 0xe9,
 };
 
+/** Caracteres sem equivalente na bobina, trocados antes de codificar. */
+const PLAIN: Record<string, string> = { '\u00a0': ' ', '\u202f': ' ', '—': '-', '–': '-', '‘': "'", '’': "'", '“': '"', '”': '"', '…': '...' };
+
 export function encodeCP850(text: string): number[] {
   const out: number[] = [];
-  for (const ch of text) {
+  for (const raw of text) {
+    const ch = PLAIN[raw] ?? raw;
+    if (ch.length > 1) {
+      out.push(...encodeCP850(ch));
+      continue;
+    }
     const code = ch.charCodeAt(0);
     if (code < 0x80) out.push(code);
     else out.push(CP850[ch] ?? 0x3f); // '?'

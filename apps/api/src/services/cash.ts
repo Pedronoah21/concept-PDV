@@ -71,8 +71,33 @@ async function computeSummary(user: AuthUser, sessionId: string) {
     movements.filter((m) => m.type === type && m.method === method).reduce((a, m) => a + (m._sum.amountCents ?? 0), 0);
   expected.DINHEIRO += mv('SUPRIMENTO') - mv('SANGRIA') - mv('DEVOLUCAO');
   for (const method of PAYMENT_METHODS) expected[method] += mv('RECEBIMENTO_CREDIARIO', method);
+  // Dados extras para o relatório impresso de fechamento.
+  const [canceledCount, movementsList, people] = await Promise.all([
+    prisma.sale.count({ where: { cashSessionId: sessionId, status: 'CANCELADA' } }),
+    prisma.cashMovement.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: 'asc' },
+      select: { type: true, method: true, amountCents: true, reason: true, createdAt: true },
+    }),
+    prisma.user.findMany({ where: { id: { in: [s.userId, s.closedById].filter(Boolean) as string[] } }, select: { id: true, name: true } }),
+  ]);
+  const nameOf = (id: string | null) => people.find((p) => p.id === id)?.name ?? null;
+  const company = await prisma.company.findUnique({ where: { id: user.companyId }, select: { tradeName: true } });
   // Crediário e vale-troca não entram em dinheiro físico; ficam fora da conferência.
   return {
+    report: {
+      company: company?.tradeName ?? '',
+      store: s.register.store.name,
+      openedBy: nameOf(s.userId),
+      closedBy: nameOf(s.closedById),
+      canceledCount,
+      salesByMethod: Object.fromEntries(payments.map((p) => [p.method, p._sum.amountCents ?? 0])),
+      changeCents: change._sum.changeCents ?? 0,
+      movements: movementsList
+        .filter((m) => m.type !== 'RECEBIMENTO_CREDIARIO' || m.method === 'DINHEIRO')
+        .map((m) => ({ type: m.type, method: m.method, amountCents: m.amountCents, reason: m.reason, at: m.createdAt })),
+      notes: s.notes,
+    },
     session: { id: s.id, status: s.status, openedAt: s.openedAt, closedAt: s.closedAt, openingCents: s.openingCents, register: s.register.name },
     salesCount: sales._count,
     salesTotalCents: sales._sum.totalCents ?? 0,
@@ -101,8 +126,8 @@ export async function closeSession(user: AuthUser, sessionId: string, input: z.i
   if (summary.session.status !== 'ABERTO') throw badRequest('Caixa já fechado');
   let difference = 0;
   for (const m of COUNTED_METHODS) difference += (input.counted[m] ?? 0) - summary.expected[m];
-  return prisma.$transaction(async (tx) => {
-    const closed = await tx.cashSession.update({
+  await prisma.$transaction(async (tx) => {
+    await tx.cashSession.update({
       where: { id: sessionId },
       data: {
         status: 'FECHADO',
@@ -115,8 +140,9 @@ export async function closeSession(user: AuthUser, sessionId: string, input: z.i
       },
     });
     await audit(tx, user.companyId, user.id, 'caixa.fechar', 'CashSession', sessionId, { difference });
-    return { ...summary, session: { ...summary.session, status: closed.status, closedAt: closed.closedAt }, counted: input.counted, differenceCents: difference };
   });
+  // Relê depois de fechar: o relatório já sai com quem fechou, horário e observações.
+  return computeSummary(user, sessionId);
 }
 
 export const installmentPayInput = z.object({

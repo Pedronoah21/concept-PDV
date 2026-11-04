@@ -27,6 +27,8 @@ export interface ReceiptData {
   } | null;
   footer?: string;
   offline?: boolean;
+  /** Via impressa: do cliente ou da loja (a da loja leva assinatura no crediário). */
+  copy?: 'CLIENTE' | 'LOJA';
 }
 
 export type ReceiptLine =
@@ -36,9 +38,25 @@ export type ReceiptLine =
   | { kind: 'qr'; data: string }
   | { kind: 'feed'; lines: number };
 
-function wrap(text: string, width: number): string[] {
+/** Quebra o texto em linhas da largura da bobina sem cortar palavras (só as maiores que a linha). */
+export function wrap(text: string, width: number): string[] {
   const out: string[] = [];
-  for (let i = 0; i < text.length; i += width) out.push(text.slice(i, i + width));
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (word.length > width) {
+      if (line) out.push(line);
+      for (let i = 0; i < word.length; i += width) out.push(word.slice(i, i + width));
+      line = out.pop() ?? '';
+      continue;
+    }
+    if (!line) line = word;
+    else if (line.length + 1 + word.length <= width) line += ' ' + word;
+    else {
+      out.push(line);
+      line = word;
+    }
+  }
+  if (line) out.push(line);
   return out.length ? out : [''];
 }
 
@@ -56,6 +74,7 @@ export function buildReceipt(r: ReceiptData, width = 48): ReceiptLine[] {
     bold: true,
     text: fiscal ? 'DANFE NFC-e - Documento Auxiliar da Nota Fiscal de Consumidor Eletronica' : 'CUPOM NAO FISCAL',
   });
+  if (r.copy) L.push({ kind: 'text', align: 'center', bold: true, text: r.copy === 'CLIENTE' ? 'VIA DO CLIENTE' : 'VIA DA LOJA' });
   L.push({ kind: 'rule' });
   L.push({ kind: 'text', text: '#  DESCRICAO' });
   L.push({ kind: 'text', text: '   QTD x UNIT                          TOTAL', align: 'left' });
@@ -96,7 +115,13 @@ export function buildReceipt(r: ReceiptData, width = 48): ReceiptLine[] {
     if (r.offline) L.push({ kind: 'text', align: 'center', text: 'Registrada sem internet - nota fiscal sera emitida na sincronizacao' });
   }
   if (r.operator) L.push({ kind: 'text', align: 'center', text: `Operador: ${r.operator}` });
-  if (r.footer) wrap(r.footer, width).forEach((t) => L.push({ kind: 'text', align: 'center', text: t }));
+  if (r.copy === 'LOJA' && r.payments.some((p) => p.method === 'CREDIARIO')) {
+    L.push({ kind: 'feed', lines: 3 });
+    L.push({ kind: 'text', align: 'center', text: '_'.repeat(Math.min(40, width - 4)) });
+    L.push({ kind: 'text', align: 'center', text: `Assinatura ${r.customer?.name ?? 'do cliente'}` });
+    L.push({ kind: 'text', align: 'center', text: 'Reconheco a divida do crediario acima' });
+  }
+  if (r.footer && r.copy !== 'LOJA') wrap(r.footer, width).forEach((t) => L.push({ kind: 'text', align: 'center', text: t }));
   L.push({ kind: 'feed', lines: 3 });
   return L;
 }
