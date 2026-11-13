@@ -5,6 +5,8 @@ import { api } from './lib/api';
 import { startSyncLoop, useSync } from './lib/offline';
 import { Field, Input, ToastHost, toastError } from './components/ui';
 import { Credit } from './components/Credit';
+import { Brand } from './components/Brand';
+import { LandingPage } from './pages/Landing';
 import { PdvPage } from './pages/Pdv';
 import { CashPage } from './pages/Cash';
 import { DashboardPage } from './pages/Dashboard';
@@ -49,8 +51,8 @@ function Gate() {
     }
   }, [me]);
   if (loading) return <div className="empty">Abrindo o Concept PDV…</div>;
-  if (!me) return <LoginPage />;
-  if (path === '/' || path === '/login') {
+  if (!me) return path === '/' ? <LandingPage /> : <LoginPage />;
+  if (path === '/' || path === '/login' || path === '/entrar') {
     navigate(me.user.role === 'CAIXA' || me.user.role === 'VENDEDOR' ? '/frente' : '/painel', true);
     return null;
   }
@@ -80,10 +82,13 @@ function LoginPage() {
     }
   };
   return (
-    <div className="login">
+    <div className="login aurora">
       <form onSubmit={submit}>
-        <div className="mark">Concept PDV</div>
-        <p className="muted">Entre com o e-mail e a senha cadastrados pelo administrador da loja.</p>
+        <div className="mark">
+          <Brand />
+        </div>
+        <h1>Entrar</h1>
+        <p className="muted">Use o e-mail e a senha cadastrados pelo administrador da loja.</p>
         <Field label="E-mail">
           <Input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
         </Field>
@@ -93,7 +98,10 @@ function LoginPage() {
         <button className="btn primary lg" disabled={busy}>
           {busy ? 'Entrando…' : 'Entrar'}
         </button>
-        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
+        <Link className="back" to="/">
+          Conhecer o Concept PDV
+        </Link>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
           <Credit />
         </div>
       </form>
@@ -147,7 +155,9 @@ function Shell({ path }: { path: string }) {
   return (
     <div className="shell">
       <nav className="side" aria-label="Menu principal">
-        <div className="brandmark">Concept PDV</div>
+        <Link to="/painel" className="side-home" aria-label="Concept PDV, início">
+          <Brand />
+        </Link>
         <Link to="/frente" className="cta">
           Abrir frente de caixa
         </Link>
@@ -168,12 +178,12 @@ function Shell({ path }: { path: string }) {
         <div className="foot">
           <div>{me!.user.name}</div>
           <div>{me!.company.tradeName}</div>
-          {!sync.online && <div style={{ color: '#f5c46b' }}>Sem internet</div>}
-          <button className="btn ghost sm" style={{ color: '#dfe8ec', paddingLeft: 0 }} onClick={logout}>
+          {!sync.online && <div style={{ color: 'var(--warn, #b26a00)' }}>Sem internet</div>}
+          <button className="btn ghost sm" style={{ paddingLeft: 0, color: 'var(--brand)' }} onClick={logout}>
             Sair
           </button>
           <div style={{ marginTop: 14 }}>
-            <Credit dark />
+            <Credit />
           </div>
         </div>
       </nav>

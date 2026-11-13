@@ -139,6 +139,13 @@ Regras que valem para o código todo: dinheiro sempre em centavos inteiros; esto
 
 Veja [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## Visual
+
+A aparência (página de apresentação, cores, gradiente "aurora", botões arredondados e tipografia) é inspirada no template
+[CelestialSaaS](https://github.com/PaulleDemon/awesome-landing-pages/tree/main/src/saas/CelestialSaaS) do repositório
+[PaulleDemon/awesome-landing-pages](https://github.com/PaulleDemon/awesome-landing-pages), licença MIT, © 2024 Paul.
+As imagens da página inicial ficam em `apps/web/public/landing/` e podem ser trocadas por capturas da sua loja.
+
 ## Licença
 
 MIT

@@ -65,7 +65,7 @@ export function ShopPage({ slug }: { slug: string }) {
     );
 
   return (
-    <div className="shop">
+    <div className="shop aurora">
       <header className="shop-head">
         <h1>{data.company.name}</h1>
         <span className="muted">{[data.company.city && `${data.company.city}/${data.company.uf}`, data.company.phone].filter(Boolean).join(', ')}</span>
@@ -89,7 +89,7 @@ export function ShopPage({ slug }: { slug: string }) {
       </footer>
       {count > 0 && (
         <div className="cart-bar">
-          <span>{count} peça(s) — <b className="num" style={{ fontSize: 20 }}>{formatBRL(total)}</b></span>
+          <span>{count} peça(s), <b className="num" style={{ fontSize: 20 }}>{formatBRL(total)}</b></span>
           <button className="btn go" onClick={() => setCheckout(true)}>Finalizar pedido</button>
         </div>
       )}

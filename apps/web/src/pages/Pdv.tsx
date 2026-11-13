@@ -27,6 +27,7 @@ import {
 import { formatBRL, formatCpfCnpj, onlyDigits, uuid, variantLabel } from '../lib/format';
 import { getPrinterSettings, printReceipt } from '../lib/print';
 import { Field, Input, Modal, MoneyInput, toast, toastError } from '../components/ui';
+import { Brand } from '../components/Brand';
 
 interface Line {
   key: string;
@@ -75,7 +76,7 @@ export function PdvPage() {
   return (
     <div className="pdv">
       <div className="pdv-top">
-        <span className="brandmark">Concept PDV</span>
+        <Brand />
         <span>
           {store?.name} — {register?.name}
         </span>
@@ -86,7 +87,7 @@ export function PdvPage() {
         </span>
         {sync.pending > 0 && <span>{sync.pending} venda(s) aguardando envio</span>}
         {(can('gerencia') || can('caixa')) && <Link to={can('gerencia') ? '/painel' : '/caixa'}>Retaguarda</Link>}
-        <button className="btn sm ghost" style={{ color: '#fff' }} onClick={logout}>
+        <button className="btn sm ghost" onClick={logout}>
           Sair
         </button>
       </div>
@@ -104,7 +105,7 @@ export function PdvPage() {
 function ChooseRegister({ onPick }: { onPick: (id: string) => void }) {
   const { me } = useSession();
   return (
-    <div className="login">
+    <div className="login aurora">
       <div className="panel" style={{ width: 'min(480px, 100%)' }}>
         <div className="stack">
           <h1>Qual caixa é este computador?</h1>

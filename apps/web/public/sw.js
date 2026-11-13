@@ -1,7 +1,7 @@
 // Service worker do Concept PDV: mantém a aplicação abrindo sem internet.
 // Os dados (produtos, vendas pendentes) ficam no IndexedDB, não aqui.
 // Funciona em qualquer caminho de publicação (ex.: cedcci.com.br/pdv/): tudo é relativo ao escopo.
-const CACHE = 'concept-pdv-v2';
+const CACHE = 'concept-pdv-v3';
 const BASE = new URL(self.registration.scope).pathname; // ex.: "/pdv/" ou "/"
 const INDEX = BASE + 'index.html';
 const SHELL = [BASE, INDEX, BASE + 'manifest.webmanifest', BASE + 'icon.svg'];
