@@ -1,3 +1,4 @@
+import { Link } from '../lib/router';
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useSession } from '../lib/session';
@@ -11,10 +12,30 @@ export function SettingsPage() {
       <div className="page-head"><h1>Configurações</h1></div>
       <CompanySettings />
       <StoresSettings />
+      <div className="panel spread">
+        <span>Administradores, gerentes, operadores de caixa e vendedores ficam em <b>Usuários</b>.</span>
+        <Link className="btn" to="/usuarios">Abrir usuários</Link>
+      </div>
+    </div>
+  );
+}
+
+/** Página própria de usuários (menu Gestão → Usuários). */
+export function UsersPage() {
+  return (
+    <div className="stack">
       <UsersSettings />
     </div>
   );
 }
+
+/** Valores iniciais de cada perfil ao cadastrar. */
+const ROLE_DEFAULTS: Record<string, { maxDiscountPct: number; needsStore: boolean }> = {
+  ADMIN: { maxDiscountPct: 100, needsStore: false },
+  GERENTE: { maxDiscountPct: 30, needsStore: false },
+  CAIXA: { maxDiscountPct: 5, needsStore: true },
+  VENDEDOR: { maxDiscountPct: 5, needsStore: true },
+};
 
 function CompanySettings() {
   const { refresh } = useSession();
@@ -142,12 +163,30 @@ function UsersSettings() {
     setEdit(null);
     reload();
   });
+  const newUser = (role: keyof typeof ROLE_DEFAULTS) =>
+    setEdit({
+      name: '',
+      email: '',
+      password: '',
+      role,
+      maxDiscountPct: ROLE_DEFAULTS[role].maxDiscountPct,
+      active: true,
+      // Operador e vendedor precisam de loja: já vem marcada a primeira (dá para trocar).
+      storeId: ROLE_DEFAULTS[role].needsStore ? stores.data?.[0]?.id ?? '' : '',
+      registerId: '',
+    });
   return (
-    <div className="panel flush">
-      <div className="spread" style={{ padding: 16 }}>
-        <h2>Usuários</h2>
-        <button className="btn sm primary" onClick={() => setEdit({ name: '', email: '', password: '', role: 'CAIXA', maxDiscountPct: 5, active: true, storeId: stores.data?.length === 1 ? stores.data[0].id : '', registerId: '' })}>Novo usuário</button>
+    <>
+    <div className="page-head">
+      <h1>Usuários</h1>
+      <div className="row">
+        <button className="btn" onClick={() => newUser('ADMIN')}>Novo administrador</button>
+        <button className="btn" onClick={() => newUser('GERENTE')}>Novo gerente</button>
+        <button className="btn" onClick={() => newUser('VENDEDOR')}>Novo vendedor</button>
+        <button className="btn primary" onClick={() => newUser('CAIXA')}>Novo operador de caixa</button>
       </div>
+    </div>
+    <div className="panel flush">
       <table className="table">
         <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Loja</th><th>Caixa padrão</th><th className="r">Desconto máx.</th><th /></tr></thead>
         <tbody>
@@ -162,6 +201,7 @@ function UsersSettings() {
               <td className="r"><button className="btn sm" onClick={() => setEdit({ ...u, password: '' })}>Editar</button></td>
             </tr>
           ))}
+          {data && !data.length && <tr><td colSpan={7} className="empty">Nenhum usuário cadastrado.</td></tr>}
         </tbody>
       </table>
       {edit && (
@@ -171,16 +211,29 @@ function UsersSettings() {
           <Field label={edit.id ? 'Nova senha (deixe vazio para manter)' : 'Senha (mínimo 8 caracteres)'}><Input type="password" value={edit.password} onChange={(e) => setEdit({ ...edit, password: e.target.value })} autoComplete="new-password" /></Field>
           <div className="grid cols-2">
             <Field label="Perfil">
-              <select className="input" value={edit.role} onChange={(e) => setEdit({ ...edit, role: e.target.value })}>
+              <select
+                className="input"
+                value={edit.role}
+                onChange={(e) => {
+                  const role = e.target.value;
+                  // Usuário novo: o desconto padrão acompanha o perfil escolhido.
+                  setEdit({
+                    ...edit,
+                    role,
+                    ...(edit.id ? {} : { maxDiscountPct: ROLE_DEFAULTS[role].maxDiscountPct }),
+                    ...(ROLE_DEFAULTS[role].needsStore && !edit.storeId ? { storeId: stores.data?.[0]?.id ?? '' } : {}),
+                  });
+                }}
+              >
                 {Object.entries(ROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </Field>
             <Field label="Desconto máximo sem gerente (%)"><Input type="number" min={0} max={100} value={edit.maxDiscountPct} onChange={(e) => setEdit({ ...edit, maxDiscountPct: Number(e.target.value) })} /></Field>
           </div>
           <div className="grid cols-2">
-            <Field label="Loja" hint="O usuário só vê e opera esta loja. Operador de caixa e vendedor precisam de uma.">
+            <Field label={ROLE_DEFAULTS[edit.role]?.needsStore ? 'Loja (obrigatória)' : 'Loja'} hint="O usuário só vê e opera esta loja.">
               <select className="input" value={edit.storeId ?? ''} onChange={(e) => setEdit({ ...edit, storeId: e.target.value, registerId: '' })}>
-                <option value="">Todas as lojas</option>
+                {!ROLE_DEFAULTS[edit.role]?.needsStore && <option value="">Todas as lojas</option>}
                 {stores.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </Field>
@@ -196,5 +249,6 @@ function UsersSettings() {
         </Modal>
       )}
     </div>
+    </>
   );
 }

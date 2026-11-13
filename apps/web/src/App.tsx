@@ -15,7 +15,7 @@ import { PurchasesPage, PurchaseFormPage } from './pages/Purchases';
 import { CustomersPage, CustomerDetailPage, CreditPage } from './pages/Customers';
 import { OrdersPage } from './pages/Orders';
 import { FiscalPage } from './pages/Fiscal';
-import { SettingsPage } from './pages/Settings';
+import { SettingsPage, UsersPage } from './pages/Settings';
 import { ShopPage } from './pages/Shop';
 
 export function App() {
@@ -110,7 +110,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
   { group: 'Vendas', items: [{ to: '/painel', label: 'Painel', perm: 'gerencia' }, { to: '/vendas', label: 'Vendas' }, { to: '/caixa', label: 'Caixa', perm: 'caixa' }, { to: '/pedidos', label: 'Pedidos online', perm: 'gerencia' }] },
   { group: 'Mercadoria', items: [{ to: '/produtos', label: 'Produtos' }, { to: '/estoque', label: 'Estoque' }, { to: '/compras', label: 'Entrada de mercadoria', perm: 'gerencia' }] },
   { group: 'Clientes', items: [{ to: '/clientes', label: 'Clientes' }, { to: '/crediario', label: 'Crediário' }] },
-  { group: 'Gestão', items: [{ to: '/fiscal', label: 'Notas fiscais', perm: 'gerencia' }, { to: '/configuracoes', label: 'Configurações', perm: 'admin' }] },
+  { group: 'Gestão', items: [{ to: '/fiscal', label: 'Notas fiscais', perm: 'gerencia' }, { to: '/usuarios', label: 'Usuários', perm: 'admin' }, { to: '/configuracoes', label: 'Configurações', perm: 'admin' }] },
 ];
 
 const ROUTES: [string, (p: Record<string, string>) => ReactNode][] = [
@@ -130,6 +130,7 @@ const ROUTES: [string, (p: Record<string, string>) => ReactNode][] = [
   ['/pedidos', () => <OrdersPage />],
   ['/fiscal', () => <FiscalPage />],
   ['/configuracoes', () => <SettingsPage />],
+  ['/usuarios', () => <UsersPage />],
 ];
 
 function Shell({ path }: { path: string }) {
