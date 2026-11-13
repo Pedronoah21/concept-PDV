@@ -1,7 +1,10 @@
 // Service worker do Concept PDV: mantém a aplicação abrindo sem internet.
 // Os dados (produtos, vendas pendentes) ficam no IndexedDB, não aqui.
-const CACHE = 'concept-pdv-v1';
-const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg'];
+// Funciona em qualquer caminho de publicação (ex.: cedcci.com.br/pdv/): tudo é relativo ao escopo.
+const CACHE = 'concept-pdv-v2';
+const BASE = new URL(self.registration.scope).pathname; // ex.: "/pdv/" ou "/"
+const INDEX = BASE + 'index.html';
+const SHELL = [BASE, INDEX, BASE + 'manifest.webmanifest', BASE + 'icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -19,7 +22,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
-  if (req.method !== 'GET' || url.pathname.startsWith('/api/')) return;
+  if (req.method !== 'GET' || url.pathname.startsWith(BASE + 'api/')) return;
+  // Só cuida do que é deste app (o domínio pode ter outros sistemas).
+  if (url.origin === self.location.origin && !url.pathname.startsWith(BASE)) return;
 
   // Navegação: tenta a rede, e sem internet abre a aplicação guardada.
   if (req.mode === 'navigate') {
@@ -27,10 +32,10 @@ self.addEventListener('fetch', (event) => {
       fetch(req)
         .then((res) => {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put('/index.html', copy));
+          caches.open(CACHE).then((c) => c.put(INDEX, copy));
           return res;
         })
-        .catch(() => caches.match('/index.html')),
+        .catch(() => caches.match(INDEX)),
     );
     return;
   }

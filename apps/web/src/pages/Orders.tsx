@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PAYMENT_LABELS, type PaymentMethod } from '@concept/shared';
 import { api } from '../lib/api';
 import { navigate } from '../lib/router';
+import { withBase } from '../lib/base';
 import { useSession } from '../lib/session';
 import { fmtDateTime, formatBRL, formatCpfCnpj } from '../lib/format';
 import { Field, Loading, Modal, MoneyInput, Status, toast, useAction, useLoad } from '../components/ui';
@@ -19,7 +20,7 @@ export function OrdersPage() {
   const [status, setStatus] = useState('');
   const { data, error, loading, reload } = useLoad<any[]>(`/orders${status ? `?status=${status}` : ''}`, [status]);
   const [open, setOpen] = useState<any | null>(null);
-  const shopUrl = `${location.origin}/loja/${me!.company.slug}`;
+  const shopUrl = `${location.origin}${withBase(`/loja/${me!.company.slug}`)}`;
   return (
     <div className="stack">
       <div className="page-head">

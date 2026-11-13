@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { BASE } from '../lib/base';
 import { createSession, destroySession, requireAuth, SESSION_COOKIE, signApproval, verifyCredentials } from '../lib/auth';
 import { forbidden } from '../lib/errors';
 import { parse } from '../lib/http';
@@ -17,7 +18,7 @@ export default async function authRoutes(app: FastifyInstance) {
       httpOnly: true,
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production',
-      path: '/',
+      path: BASE || '/',
       expires: expiresAt,
     });
     return { ok: true };
@@ -25,7 +26,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.post('/auth/logout', async (req, reply) => {
     await destroySession(req.cookies[SESSION_COOKIE]);
-    reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    reply.clearCookie(SESSION_COOKIE, { path: BASE || '/' });
     return { ok: true };
   });
 

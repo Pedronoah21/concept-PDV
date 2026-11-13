@@ -4,6 +4,7 @@ import { SessionProvider, useSession } from './lib/session';
 import { api } from './lib/api';
 import { startSyncLoop, useSync } from './lib/offline';
 import { Field, Input, ToastHost, toastError } from './components/ui';
+import { Credit } from './components/Credit';
 import { PdvPage } from './pages/Pdv';
 import { CashPage } from './pages/Cash';
 import { DashboardPage } from './pages/Dashboard';
@@ -50,10 +51,14 @@ function Gate() {
   if (loading) return <div className="empty">Abrindo o Concept PDV…</div>;
   if (!me) return <LoginPage />;
   if (path === '/' || path === '/login') {
-    navigate(me.user.role === 'CAIXA' || me.user.role === 'VENDEDOR' ? '/pdv' : '/painel', true);
+    navigate(me.user.role === 'CAIXA' || me.user.role === 'VENDEDOR' ? '/frente' : '/painel', true);
     return null;
   }
-  if (path === '/pdv') return <PdvPage />;
+  if (path === '/pdv') {
+    navigate('/frente', true); // endereço antigo da frente de caixa
+    return null;
+  }
+  if (path === '/frente') return <PdvPage />;
   return <Shell path={path} />;
 }
 
@@ -88,6 +93,9 @@ function LoginPage() {
         <button className="btn primary lg" disabled={busy}>
           {busy ? 'Entrando…' : 'Entrar'}
         </button>
+        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
+          <Credit />
+        </div>
       </form>
     </div>
   );
@@ -139,7 +147,7 @@ function Shell({ path }: { path: string }) {
     <div className="shell">
       <nav className="side" aria-label="Menu principal">
         <div className="brandmark">Concept PDV</div>
-        <Link to="/pdv" className="cta">
+        <Link to="/frente" className="cta">
           Abrir frente de caixa
         </Link>
         {NAV.map((g) => {
@@ -163,6 +171,9 @@ function Shell({ path }: { path: string }) {
           <button className="btn ghost sm" style={{ color: '#dfe8ec', paddingLeft: 0 }} onClick={logout}>
             Sair
           </button>
+          <div style={{ marginTop: 14 }}>
+            <Credit dark />
+          </div>
         </div>
       </nav>
       <main className="main">{page}</main>

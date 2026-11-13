@@ -1,20 +1,31 @@
 import { useEffect, useState, type AnchorHTMLAttributes, type MouseEvent } from 'react';
+import { BASE, withBase } from './base';
 
 /** Roteador mínimo sobre a History API (sem dependências). */
 const listeners = new Set<() => void>();
 
+/** Caminho atual sem o prefixo de publicação: '/pdv/vendas' → '/vendas'. */
+export function currentPath() {
+  const p = location.pathname;
+  if (!BASE) return p;
+  if (p === BASE) return '/';
+  return p.startsWith(`${BASE}/`) ? p.slice(BASE.length) : p;
+}
+
+/** Recebe caminhos do app ('/vendas'), sem o prefixo. */
 export function navigate(to: string, replace = false) {
-  if (replace) history.replaceState(null, '', to);
-  else history.pushState(null, '', to);
+  const url = withBase(to);
+  if (replace) history.replaceState(null, '', url);
+  else history.pushState(null, '', url);
   listeners.forEach((l) => l());
 }
 
 window.addEventListener('popstate', () => listeners.forEach((l) => l()));
 
 export function usePath() {
-  const [path, setPath] = useState(location.pathname);
+  const [path, setPath] = useState(currentPath());
   useEffect(() => {
-    const l = () => setPath(location.pathname);
+    const l = () => setPath(currentPath());
     listeners.add(l);
     return () => void listeners.delete(l);
   }, []);
@@ -42,7 +53,7 @@ export function match(pattern: string, path: string): Record<string, string> | n
 export function Link({ to, onClick, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }) {
   return (
     <a
-      href={to}
+      href={withBase(to)}
       onClick={(e: MouseEvent<HTMLAnchorElement>) => {
         onClick?.(e);
         if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.button !== 0) return;

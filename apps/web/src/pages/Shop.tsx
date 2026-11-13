@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { formatBRL, onlyDigits } from '../lib/format';
 import { Field, Input, Loading, Modal, toast, toastError } from '../components/ui';
+import { Credit } from '../components/Credit';
 
 interface ShopProduct {
   id: string;
@@ -83,6 +84,9 @@ export function ShopPage({ slug }: { slug: string }) {
         })} />)}
         {!products.length && <div className="empty">Nenhum produto disponível no momento.</div>}
       </div>
+      <footer className="shop-foot">
+        <Credit />
+      </footer>
       {count > 0 && (
         <div className="cart-bar">
           <span>{count} peça(s) — <b className="num" style={{ fontSize: 20 }}>{formatBRL(total)}</b></span>

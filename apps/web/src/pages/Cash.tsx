@@ -73,7 +73,7 @@ export function CashPage() {
   if (!registerId)
     return (
       <div className="panel">
-        Este computador ainda não tem um caixa definido. <Link to="/pdv">Abra a frente de caixa</Link> para escolher.
+        Este computador ainda não tem um caixa definido. <Link to="/frente">Abra a frente de caixa</Link> para escolher.
       </div>
     );
 
@@ -92,7 +92,7 @@ export function CashPage() {
       <Loading loading={current.loading} error={current.error} />
       {!current.loading && !current.data && !closed && (
         <div className="panel">
-          Caixa fechado. <Link to="/pdv">Abra pela frente de caixa</Link> informando o fundo de troco.
+          Caixa fechado. <Link to="/frente">Abra pela frente de caixa</Link> informando o fundo de troco.
         </div>
       )}
       {closed && <ClosedReport s={closed} />}

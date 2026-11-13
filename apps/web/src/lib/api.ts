@@ -1,3 +1,5 @@
+import { BASE } from './base';
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -15,7 +17,7 @@ export class ApiError extends Error {
 export async function api<T = any>(path: string, opts: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
   let res: Response;
   try {
-    res = await fetch('/api' + path, {
+    res = await fetch(`${BASE}/api${path}`, {
       method: opts.method ?? (opts.body ? 'POST' : 'GET'),
       credentials: 'include',
       headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,

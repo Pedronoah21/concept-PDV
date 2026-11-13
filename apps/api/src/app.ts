@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Prisma } from '@prisma/client';
 import { AppError } from './lib/errors';
+import { BASE } from './lib/base';
 import authRoutes from './routes/auth';
 import catalogRoutes from './routes/catalog';
 import salesRoutes from './routes/sales';
@@ -36,7 +37,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     return reply.code(500).send({ error: 'Erro interno', code: 'ERRO_INTERNO' });
   });
 
-  app.get('/health', async () => ({ ok: true, time: new Date().toISOString() }));
+  const health = async () => ({ ok: true, time: new Date().toISOString() });
+  app.get('/health', health);
+  if (BASE) app.get(`${BASE}/health`, health);
 
   await app.register(
     async (api) => {
@@ -47,15 +50,20 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
       await api.register(businessRoutes);
       await api.register(adminRoutes);
     },
-    { prefix: '/api' },
+    { prefix: `${BASE}/api` },
   );
 
   // Produção: a própria API entrega o app (PDV, retaguarda e loja online) já compilado.
   const webDist = process.env.WEB_DIST ?? fileURLToPath(new URL('../../web/dist', import.meta.url));
   if (existsSync(webDist)) {
-    await app.register(fastifyStatic, { root: webDist, wildcard: false });
+    await app.register(fastifyStatic, { root: webDist, prefix: `${BASE}/`, wildcard: false });
     app.setNotFoundHandler((req, reply) => {
-      if (req.method !== 'GET' || req.url.startsWith('/api/')) return reply.code(404).send({ error: 'Rota não encontrada', code: 'NAO_ENCONTRADO' });
+      const path = req.url.split('?')[0];
+      if (req.method !== 'GET' || path.startsWith(`${BASE}/api/`)) return reply.code(404).send({ error: 'Rota não encontrada', code: 'NAO_ENCONTRADO' });
+      // Fora do caminho do sistema (ex.: raiz do onrender.com): leva para o início do app.
+      if (BASE && path !== BASE && !path.startsWith(`${BASE}/`)) return reply.redirect(`${BASE}/`);
+      // A página do app nunca fica em cache: assim cada publicação chega na hora.
+      reply.header('cache-control', 'no-cache');
       return reply.sendFile('index.html');
     });
   }

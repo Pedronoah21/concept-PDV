@@ -100,7 +100,9 @@ NODE_ENV=production COOKIE_SECRET=<segredo-longo> DATABASE_URL=<postgres> \
   pnpm --filter @concept/api start
 ```
 
-A API entrega o app compilado no mesmo endereço (porta 3333). No Render, o build roda
+A API entrega o app compilado no mesmo endereço (porta 3333). Para publicar num caminho do
+domínio (ex.: `cedcci.com.br/pdv`), defina `BASE_PATH=/pdv` no build e na execução: API, arquivos,
+cookie de sessão, modo offline e loja online passam a morar em `/pdv`. No Render, o build roda
 `pnpm --filter @concept/api deploy:prepare`, que aplica as migrações pendentes; com o GitHub
 conectado, cada envio ao `main` publica uma nova versão sozinho. Coloque um proxy com HTTPS
 (Caddy, Nginx, Cloudflare) na frente: o navegador só instala o PWA e libera a impressão direta
